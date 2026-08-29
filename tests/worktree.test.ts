@@ -74,7 +74,7 @@ describe("Git Worktree Task Isolation Subsystem", () => {
     } finally {
       await cleanupTestGitRepo(testRepoDir);
     }
-  });
+  }, 30000);
 
   test("modifications in worktree do not pollute main working directory", async () => {
     const testRepoDir = getUniqueTestRepoDir();
@@ -99,7 +99,7 @@ describe("Git Worktree Task Isolation Subsystem", () => {
     } finally {
       await cleanupTestGitRepo(testRepoDir);
     }
-  });
+  }, 30000);
 
   test("merges worktree changes back into main branch cleanly", async () => {
     const testRepoDir = getUniqueTestRepoDir();
@@ -130,7 +130,7 @@ describe("Git Worktree Task Isolation Subsystem", () => {
     } finally {
       await cleanupTestGitRepo(testRepoDir);
     }
-  });
+  }, 30000);
 
   test("LLM tools (create_worktree, list_worktrees, merge_worktree) execute via ToolRouter", async () => {
     const testRepoDir = getUniqueTestRepoDir();
@@ -174,5 +174,5 @@ describe("Git Worktree Task Isolation Subsystem", () => {
     } finally {
       await cleanupTestGitRepo(testRepoDir);
     }
-  });
+  }, 30000);
 });

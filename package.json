@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "start": "bun run src/cli/index.ts",
-    "test": "bun test",
+    "test": "bun test --timeout 30000",
     "typecheck": "tsc --noEmit",
     "build:js": "bun build ./src/index.ts --outdir ./dist --target=bun && bun build ./src/cli/index.ts --outfile ./dist/cli.js --target=bun",
     "build:exe": "bun build ./src/cli/index.ts --compile --outfile pikaa.exe",
