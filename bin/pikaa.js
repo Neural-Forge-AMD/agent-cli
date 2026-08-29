@@ -3,9 +3,10 @@
 /**
  * Universal Cross-Platform Dispatcher for Pikaa / Groupy Agent.
  *
- * Automatically detects platform (Windows, macOS, Linux) and architecture (x64, arm64).
- * If a native compiled binary is present, executes it for instant native performance.
- * Otherwise, seamlessly falls back to the bundled JavaScript runtime.
+ * Priority order:
+ * 1. Precompiled native binary (zero-dependency, instant start)
+ * 2. Bun runtime running the bundled JS (requires Bun installed)
+ * 3. Clear error message pointing user to install Bun
  */
 
 import { spawnSync } from "node:child_process";
@@ -34,17 +35,16 @@ function getBinaryName() {
   return null;
 }
 
+// --- 1. Try native binary ---
 const binaryName = getBinaryName();
 let nativeBinaryPath = null;
 
 if (binaryName) {
-  const possiblePaths = [
+  for (const p of [
     join(rootDir, "dist", "bin", binaryName),
     join(rootDir, "bin", binaryName),
     join(rootDir, binaryName),
-  ];
-
-  for (const p of possiblePaths) {
+  ]) {
     if (existsSync(p)) {
       nativeBinaryPath = p;
       break;
@@ -53,32 +53,55 @@ if (binaryName) {
 }
 
 if (nativeBinaryPath) {
-  // Ensure execute permissions on Unix
   if (platform !== "win32") {
-    try {
-      chmodSync(nativeBinaryPath, 0o755);
-    } catch {}
+    try { chmodSync(nativeBinaryPath, 0o755); } catch {}
   }
-
   const result = spawnSync(nativeBinaryPath, process.argv.slice(2), {
     stdio: "inherit",
     env: process.env,
   });
-
-  if (result.error) {
-    console.error(`Failed to launch native binary: ${result.error.message}`);
-    process.exit(1);
-  }
-
-  process.exit(result.status ?? 0);
-} else {
-  // Fallback to JS module execution
-  const jsEntry = existsSync(join(rootDir, "dist", "cli.js"))
-    ? join(rootDir, "dist", "cli.js")
-    : join(rootDir, "src", "cli", "index.ts");
-
-  import(jsEntry).catch((err) => {
-    console.error("Failed to start CLI:", err);
-    process.exit(1);
-  });
+  process.exit(result.status ?? (result.error ? 1 : 0));
 }
+
+// --- 2. Fallback: run via Bun (dist/cli.js is a Bun bundle) ---
+const jsEntry = join(rootDir, "dist", "cli.js");
+
+if (!existsSync(jsEntry)) {
+  console.error("pikaa: dist/cli.js not found. Please reinstall the package.");
+  process.exit(1);
+}
+
+// Find Bun executable
+const bunCandidates = platform === "win32"
+  ? ["bun.exe"]
+  : ["bun"];
+
+let bunBin = null;
+for (const candidate of bunCandidates) {
+  const probe = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+  if (!probe.error) {
+    bunBin = candidate;
+    break;
+  }
+}
+
+if (!bunBin) {
+  console.error([
+    "",
+    "  pikaa requires Bun to run.",
+    "  Install Bun with:",
+    "",
+    "    curl -fsSL https://bun.sh/install | bash   # macOS / Linux",
+    "    powershell -c \"irm bun.sh/install.ps1 | iex\"  # Windows",
+    "",
+    "  Then re-run:  pikaa",
+    "",
+  ].join("\n"));
+  process.exit(1);
+}
+
+const result = spawnSync(bunBin, ["run", jsEntry, ...process.argv.slice(2)], {
+  stdio: "inherit",
+  env: process.env,
+});
+process.exit(result.status ?? (result.error ? 1 : 0));
