@@ -37,6 +37,7 @@ jobs:
       - name: Package Archives for GitHub Release
         run: |
           mkdir -p dist/release
+          cp dist/bin/* dist/release/
           cd dist/bin
           tar -czf ../release/pikaa-linux-x64.tar.gz pikaa-linux-x64
           tar -czf ../release/pikaa-linux-arm64.tar.gz pikaa-linux-arm64

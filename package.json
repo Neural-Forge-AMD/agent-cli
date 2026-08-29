@@ -1,6 +1,6 @@
 {
   "name": "@pikaa-ai/pikaa",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "PIKAA CLI - AI coding agent that runs locally in your terminal.",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -13,7 +13,6 @@
   "files": [
     "dist",
     "bin",
-    "scripts/postinstall.js",
     "README.md",
     "LICENSE"
   ],
@@ -25,7 +24,6 @@
     "build:exe": "bun build ./src/cli/index.ts --compile --outfile pikaa.exe",
     "build:binaries": "bun run scripts/build-binaries.ts",
     "build": "bun run build:js && bun run build:exe",
-    "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "bun run build:js"
   },
   "keywords": [
