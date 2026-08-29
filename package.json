@@ -1,7 +1,7 @@
 {
-  "name": "@mesosfer/pikaa",
-  "version": "0.1.0",
-  "description": "Autonomous AI Coding Agent Engine in TypeScript & Bun",
+  "name": "@pikaa-ai/pikaa",
+  "version": "0.1.3",
+  "description": "PIKAA CLI - AI coding agent that runs locally in your terminal.",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
