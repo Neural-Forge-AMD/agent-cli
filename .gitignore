@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build outputs & binaries
+dist/
+build/
+*.exe
+*.tsbuildinfo
+
+# Groupy runtime, isolated worktrees & SQLite storage
+.groupy/
+.worktrees/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+bun-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo

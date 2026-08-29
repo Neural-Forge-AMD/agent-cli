@@ -1,0 +1,47 @@
+{
+  "name": "@mesosfer/pikaa",
+  "version": "0.1.0",
+  "description": "Autonomous AI Coding Agent Engine in TypeScript & Bun",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "pikaa": "./bin/pikaa.js",
+    "groupy": "./bin/pikaa.js"
+  },
+  "type": "module",
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "bun run src/cli/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build:js": "bun build ./src/index.ts --outdir ./dist --target=bun && bun build ./src/cli/index.ts --outfile ./dist/cli.js --target=bun",
+    "build:exe": "bun build ./src/cli/index.ts --compile --outfile pikaa.exe",
+    "build:binaries": "bun run scripts/build-binaries.ts",
+    "build": "bun run build:js && bun run build:exe",
+    "prepublishOnly": "bun run build:js"
+  },
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "codex",
+    "claude-code",
+    "cli",
+    "agentic",
+    "sub-agents",
+    "mcp",
+    "worktree"
+  ],
+  "author": "Mesosfer",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
