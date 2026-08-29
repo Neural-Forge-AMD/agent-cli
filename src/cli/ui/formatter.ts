@@ -25,12 +25,12 @@ export class CliFormatter {
     console.log();
     console.log(`  ${b}       ▄▄████████▄▄${r}`);
     console.log(`  ${b}    ▄███▀▀      ▀▀███▄${r}`);
-    console.log(`  ${b}  ▄██▀              ▀██▄${r}      ${t}GROUPY AGENT${r} ${g}(v0.1.0)${r}`);
+    console.log(`  ${b}  ▄██▀              ▀██▄${r}      ${t}PIKAA AGENT${r}`);
     console.log(`  ${b} ███    ▄▄████▄▄      ███${r}     ${g}Autonomous Coding Engine${r}`);
-    console.log(`  ${b}███   ▄██▀    ▀██▄     ▀▀${r}     ${g}Codex Core Architecture in TypeScript & Bun${r}`);
-    console.log(`  ${b}███   ██▌  ██  ▐██████████████▄${r}  ${style.dim("Model:")} ${style.brand(info.model)}`);
-    console.log(`  ${b}███   ██▌  ██  ▐██    ██  ██ ▀${r}  ${style.dim("Role:")}  ${style.yellow(info.role)}`);
-    console.log(`  ${b}███   ▀██▄    ▄██▀     ▄▄${r}     ${style.dim("Dir:")}   ${style.dim(info.cwd)}`);
+    console.log(`  ${b}███   ▄██▀    ▀██▄     ▀▀${r}     ${style.dim("Model:")} ${style.brand(info.model)}`);
+    console.log(`  ${b}███   ██▌  ██  ▐██████████████▄${r}  ${style.dim("Role:")}  ${style.yellow(info.role)}`);
+    console.log(`  ${b}███   ██▌  ██  ▐██    ██  ██ ▀${r}  ${style.dim("Dir:")}   ${style.dim(info.cwd)}`);
+    console.log(`  ${b}███   ▀██▄    ▄██▀     ▄▄${r}`);
     console.log(`  ${b} ███    ▀▀████▀▀      ███${r}`);
     console.log(`  ${b}  ▀██▄              ▄██▀${r}`);
     console.log(`  ${b}    ▀███▄▄      ▄▄███▀${r}`);
