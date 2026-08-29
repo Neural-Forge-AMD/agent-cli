@@ -101,12 +101,6 @@ jobs:
           bun install
           bun run build:js
 
-      - name: Download Native Binaries into Dist Whitelist
-        uses: actions/download-artifact@v4
-        with:
-          name: release-binaries
-          path: dist/bin
-
       - name: Publish to NPM
         run: npm publish --access public --provenance
         env:
