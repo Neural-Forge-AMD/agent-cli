@@ -3,10 +3,9 @@
 /**
  * Universal Cross-Platform Dispatcher for Pikaa / Groupy Agent.
  *
- * Priority order:
- * 1. Precompiled native binary (zero-dependency, instant start)
- * 2. Bun runtime running the bundled JS (requires Bun installed)
- * 3. Clear error message pointing user to install Bun
+ * 1. Runs precompiled native binary if present (downloaded by postinstall)
+ * 2. Falls back to Bun if installed (rare, for unsupported platforms)
+ * 3. Shows helpful install instructions if neither is available
  */
 
 import { spawnSync } from "node:child_process";
@@ -21,87 +20,54 @@ const rootDir = join(__dirname, "..");
 const platform = process.platform;
 const arch = process.arch;
 
-// Map OS & Arch to precompiled binary filename
 function getBinaryName() {
-  if (platform === "win32") {
-    return arch === "arm64" ? "pikaa-windows-arm64.exe" : "pikaa-windows-x64.exe";
-  }
-  if (platform === "darwin") {
-    return arch === "arm64" ? "pikaa-darwin-arm64" : "pikaa-darwin-x64";
-  }
-  if (platform === "linux") {
-    return arch === "arm64" ? "pikaa-linux-arm64" : "pikaa-linux-x64";
-  }
+  if (platform === "win32") return arch === "arm64" ? "pikaa-windows-arm64.exe" : "pikaa-windows-x64.exe";
+  if (platform === "darwin") return arch === "arm64" ? "pikaa-darwin-arm64" : "pikaa-darwin-x64";
+  if (platform === "linux") return arch === "arm64" ? "pikaa-linux-arm64" : "pikaa-linux-x64";
   return null;
 }
 
-// --- 1. Try native binary ---
+// --- 1. Native binary (postinstall should have placed it here) ---
 const binaryName = getBinaryName();
-let nativeBinaryPath = null;
-
 if (binaryName) {
   for (const p of [
-    join(rootDir, "dist", "bin", binaryName),
     join(rootDir, "bin", binaryName),
-    join(rootDir, binaryName),
+    join(rootDir, "dist", "bin", binaryName),
   ]) {
     if (existsSync(p)) {
-      nativeBinaryPath = p;
-      break;
+      if (platform !== "win32") {
+        try { chmodSync(p, 0o755); } catch {}
+      }
+      const r = spawnSync(p, process.argv.slice(2), { stdio: "inherit", env: process.env });
+      process.exit(r.status ?? (r.error ? 1 : 0));
     }
   }
 }
 
-if (nativeBinaryPath) {
-  if (platform !== "win32") {
-    try { chmodSync(nativeBinaryPath, 0o755); } catch {}
-  }
-  const result = spawnSync(nativeBinaryPath, process.argv.slice(2), {
-    stdio: "inherit",
-    env: process.env,
-  });
-  process.exit(result.status ?? (result.error ? 1 : 0));
-}
-
-// --- 2. Fallback: run via Bun (dist/cli.js is a Bun bundle) ---
+// --- 2. Fallback: run via Bun ---
 const jsEntry = join(rootDir, "dist", "cli.js");
-
-if (!existsSync(jsEntry)) {
-  console.error("pikaa: dist/cli.js not found. Please reinstall the package.");
-  process.exit(1);
-}
-
-// Find Bun executable
-const bunCandidates = platform === "win32"
-  ? ["bun.exe"]
-  : ["bun"];
-
-let bunBin = null;
-for (const candidate of bunCandidates) {
-  const probe = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+if (existsSync(jsEntry)) {
+  const probe = spawnSync("bun", ["--version"], { encoding: "utf8" });
   if (!probe.error) {
-    bunBin = candidate;
-    break;
+    const r = spawnSync("bun", ["run", jsEntry, ...process.argv.slice(2)], {
+      stdio: "inherit",
+      env: process.env,
+    });
+    process.exit(r.status ?? (r.error ? 1 : 0));
   }
 }
 
-if (!bunBin) {
-  console.error([
-    "",
-    "  pikaa requires Bun to run.",
-    "  Install Bun with:",
-    "",
-    "    curl -fsSL https://bun.sh/install | bash   # macOS / Linux",
-    "    powershell -c \"irm bun.sh/install.ps1 | iex\"  # Windows",
-    "",
-    "  Then re-run:  pikaa",
-    "",
-  ].join("\n"));
-  process.exit(1);
-}
-
-const result = spawnSync(bunBin, ["run", jsEntry, ...process.argv.slice(2)], {
-  stdio: "inherit",
-  env: process.env,
-});
-process.exit(result.status ?? (result.error ? 1 : 0));
+// --- 3. Nothing worked ---
+console.error([
+  "",
+  "  pikaa could not start.",
+  "  The precompiled binary may have failed to download during install.",
+  "",
+  "  Try reinstalling:",
+  "    npm install -g @pikaa-ai/pikaa",
+  "",
+  "  Or install Bun as a fallback runtime:",
+  "    curl -fsSL https://bun.sh/install | bash",
+  "",
+].join("\n"));
+process.exit(1);
