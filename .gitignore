@@ -6,6 +6,8 @@ dist/
 build/
 *.exe
 *.tsbuildinfo
+.bun-cache/
+.cache/
 
 # Groupy runtime, isolated worktrees & SQLite storage
 .groupy/
