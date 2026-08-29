@@ -102,6 +102,6 @@ jobs:
           bun run build:js
 
       - name: Publish to NPM
-        run: npm publish --access public --provenance
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
