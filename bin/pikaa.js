@@ -105,14 +105,15 @@ async function downloadBinary(url, dest, redirects = 0) {
 }
 
 async function main() {
-  const existing = findExistingBinary();
-  if (existing) {
-    launchBinary(existing);
+  // 1. If local bun and dist/cli.js are available in the package, run immediately
+  if (tryLaunchWithBun()) {
     return;
   }
 
-  // If local bun and dist/cli.js are available, run immediately with 0 download
-  if (tryLaunchWithBun()) {
+  // 2. Otherwise use existing native binary if present
+  const existing = findExistingBinary();
+  if (existing) {
+    launchBinary(existing);
     return;
   }
 
