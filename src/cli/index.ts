@@ -93,7 +93,7 @@ async function main(): Promise<void> {
     } else if (arg === "--mcp") {
       mcpConfigFile = args[++i];
     } else if (arg === "--version" || arg === "-v" || arg === "version") {
-      console.log(`pikaa v0.2.3`);
+      console.log(`pikaa v0.2.4`);
       process.exit(0);
     } else if (arg === "--help" || arg === "-h") {
       printCliHelp();
