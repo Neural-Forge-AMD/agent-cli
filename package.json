@@ -1,6 +1,6 @@
 {
   "name": "@pikaa-ai/pikaa",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "PIKAA CLI - AI coding agent that runs locally in your terminal.",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

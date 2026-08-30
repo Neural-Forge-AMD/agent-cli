@@ -26,7 +26,7 @@ const rootDir = join(__dirname, "..");
 const platform = process.platform;
 const arch = process.arch;
 
-let version = "0.2.2";
+let version = "0.2.3";
 try {
   const pkg = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
   version = pkg.version;

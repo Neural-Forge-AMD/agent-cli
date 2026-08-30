@@ -136,7 +136,7 @@ export class AuthClient {
                 </head>
                 <body>
                   <div class="box">
-                    <h1>⚡ Authentication Successful!</h1>
+                    <h1>Authentication Successful!</h1>
                     <p>You have successfully logged in to Groupy CLI. You can close this window and return to your terminal.</p>
                   </div>
                 </body>
