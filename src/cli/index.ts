@@ -33,6 +33,8 @@ async function main(): Promise<void> {
   let model = process.env.GROUPY_MODEL || process.env.OPENAI_MODEL || "groupy";
   let baseUrl = process.env.GROUPY_BASE_URL || process.env.OPENAI_BASE_URL || savedCreds?.baseUrl;
   let apiKey = process.env.GROUPY_API_KEY || process.env.OPENAI_API_KEY || savedCreds?.accessToken;
+  let explicitBaseUrl: string | undefined;
+  let explicitApiKey: string | undefined;
   let cwd = process.cwd();
   let role = "default";
   let mcpConfigFile: string | undefined;
@@ -60,7 +62,7 @@ async function main(): Promise<void> {
       printWhoami(credStore);
       process.exit(0);
     } else if (arg === "models" || arg === "--models") {
-      await printAvailableModels(baseUrl || "http://localhost:8090/v1", apiKey);
+      await printAvailableModels(baseUrl || "https://api.groupy-hub.store/v1", apiKey);
       process.exit(0);
     } else if (arg === "list" || arg === "sessions" || arg === "--list") {
       printSessionsList(storageManager);
@@ -79,9 +81,11 @@ async function main(): Promise<void> {
     } else if (arg === "--model" || arg === "-m") {
       model = args[++i] || model;
     } else if (arg === "--base-url" || arg === "-u") {
-      baseUrl = args[++i] || baseUrl;
+      explicitBaseUrl = args[++i];
+      baseUrl = explicitBaseUrl || baseUrl;
     } else if (arg === "--api-key" || arg === "-k") {
-      apiKey = args[++i] || apiKey;
+      explicitApiKey = args[++i];
+      apiKey = explicitApiKey || apiKey;
     } else if (arg === "--cwd" || arg === "-C") {
       cwd = resolve(args[++i] || cwd);
     } else if (arg === "--role" || arg === "-r") {
@@ -97,8 +101,8 @@ async function main(): Promise<void> {
   }
 
   const modelClient = new ModelClient({
-    baseUrl,
-    apiKey,
+    baseUrl: explicitBaseUrl,
+    apiKey: explicitApiKey,
     defaultModel: model,
   });
 
