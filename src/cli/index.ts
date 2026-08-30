@@ -92,6 +92,9 @@ async function main(): Promise<void> {
       role = args[++i] || role;
     } else if (arg === "--mcp") {
       mcpConfigFile = args[++i];
+    } else if (arg === "--version" || arg === "-v" || arg === "version") {
+      console.log(`pikaa v0.2.3`);
+      process.exit(0);
     } else if (arg === "--help" || arg === "-h") {
       printCliHelp();
       process.exit(0);
@@ -374,6 +377,7 @@ ${style.bold("OPTIONS:")}
   -C, --cwd <path>         Working directory for agent operations (default: current dir)
   -r, --role <role>        Initial agent role (default, reviewer, researcher, tester, planner)
       --mcp <path>         Path to MCP server configuration JSON file
+  -v, --version            Show CLI version
   -h, --help               Show this help message
 
 ${style.bold("EXAMPLES:")}
