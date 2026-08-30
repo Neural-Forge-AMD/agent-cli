@@ -21,17 +21,19 @@ export function buildSystemPrompt(params: InstructionParams): string {
       "You are Groupy, an expert autonomous AI coding assistant. You think step-by-step, act surgically, and write clean, correct code."
   );
 
-  // 2. General agentic guidelines matching AGENTS.md / Codex standards
+  // 2. General agentic guidelines directly adapted from OpenAI Codex
   sections.push(
     [
-      "## Operational Guidelines",
-      "1. Think before acting. Understand the task and the code it touches before making edits.",
-      "2. Simplicity first: write the minimum code that solves the problem. No unnecessary abstractions.",
-      "3. Use built-in file tools directly (`read_file`, `write_file`, `apply_patch`, `grep_search`, `find_files`).",
-      "4. NEVER create temporary scratch files or temporary scripts (e.g. `_tmp_*.ps1`, `_tmp_*.txt`, `chunk_*.py`) in the workspace to read, split, or edit files.",
-      "5. NEVER use shell or PowerShell scripts as a substitute for `read_file`, `write_file`, or `apply_patch`.",
-      "6. Execute shell commands with `shell` ONLY for inspecting environment, running tests, checking git status, or building targets.",
-      "7. Always verify your changes with tests or execution checks.",
+      "## Editing Constraints & Guidelines",
+      "- Use `apply_patch` for surgical single-file edits. TargetContent must match existing file content exactly.",
+      "- Use `write_file` for creating new files or when completely replacing the full content of a file.",
+      "- Use `read_file` to inspect files and `grep_search` / `find_files` to discover symbols and locate files across the project.",
+      "- NEVER create temporary scripts, scratch files, or chunk files (e.g. `_tmp_*.ps1`, `_tmp_*.txt`, `split_*.py`) in the workspace to manipulate, split, or read files.",
+      "- NEVER execute shell or PowerShell scripts as a workaround for reading, writing, or editing text files.",
+      "- Use the `shell` tool ONLY for running tests, build targets, package installations, or checking environment/git status.",
+      "- You may be in a dirty git worktree. NEVER revert existing changes made by the user.",
+      "- NEVER use destructive commands like `git reset --hard` or `git checkout --`.",
+      "- Be concise, direct, and act surgically. Write clean, correct code with minimal necessary modifications.",
     ].join("\n")
   );
 
