@@ -3,7 +3,7 @@
  * Directly mirrors codex-rs/skills/src/model.rs.
  */
 
-export type SkillScope = "workspace" | "global";
+export type SkillScope = "workspace" | "global" | "built-in";
 
 export interface SkillMetadata {
   name: string;
@@ -12,6 +12,7 @@ export interface SkillMetadata {
   path: string;
   rootDir: string;
   scope: SkillScope;
+  enabled?: boolean;
 }
 
 export interface LoadedSkill extends SkillMetadata {

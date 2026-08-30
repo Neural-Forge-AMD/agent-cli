@@ -9,10 +9,12 @@ import { c, style } from "./ui/colors";
 import { LiveSpinner } from "./ui/spinner";
 import {
   renderGroupyBanner,
+  renderAnimatedGroupyBanner,
   formatToolCard,
   formatTurnSummary,
   formatTaskStepStart,
   formatTaskStepFinish,
+  formatTaskProgressPlan,
 } from "./ui/formatter";
 import { handleSlashCommand, AVAILABLE_SLASH_COMMANDS } from "./commands";
 import { InteractiveLineEditor } from "./ui/line-editor";
@@ -176,6 +178,12 @@ export class CliRepl {
           await this.handleInteractiveUserQuestion(msg as any);
           break;
 
+        case "PlanUpdated":
+          this.spinner.stop();
+          formatTaskProgressPlan(msg.plan, msg.explanation);
+          this.spinner.start("Executing next step...");
+          break;
+
         case "TurnCompleted":
           if (this.reasoningStarted) {
             console.log(style.dim("\n  └─────────────────────────────────────────────────────────\n"));
@@ -284,7 +292,7 @@ export class CliRepl {
     const creds = new CredentialsStore().load();
     const accountUser = creds?.user?.username || creds?.user?.email || (creds?.accessToken ? "Authenticated" : undefined);
 
-    renderGroupyBanner({
+    await renderAnimatedGroupyBanner({
       user: accountUser,
       role: this.role,
       model: this.session.model,

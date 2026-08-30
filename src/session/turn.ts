@@ -62,10 +62,11 @@ export async function runTurn(
   const skillsPrompt = session.skillsLoader?.formatSkillsPrompt(cwd);
 
   const effectiveSystemPrompt = buildSystemPrompt({
-    basePrompt: session.systemPrompt,
+    basePrompt: session.systemPrompt || undefined,
     worldStatePrompt: formatWorldStatePrompt(worldState),
     memoriesPrompt,
     skillsPrompt,
+    cwd,
   });
 
   let iteration = 0;
@@ -184,7 +185,16 @@ export async function runTurn(
               turnId,
               signal,
               execPolicy: session.execPolicy,
-              requestApproval: async (description, command) => {
+              mode: session.collaborationMode,
+              onPlanUpdate: (plan, explanation) => {
+                session.emitEvent({
+                  type: "PlanUpdated",
+                  turnId,
+                  explanation,
+                  plan,
+                });
+              },
+              requestApproval: async (description, command, prefixRule) => {
                 const approvalId = `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
                 return session.requestApproval({
                   approvalId,

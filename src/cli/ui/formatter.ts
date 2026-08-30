@@ -1,13 +1,19 @@
-/**
- * CLI Formatter: High-fidelity ANSI rendering of the Groupy Emblem and clean typography.
- */
-
 import { c, style } from "./colors";
 import { parsePatch, renderDiff } from "./diff";
 import { formatDuration } from "./spinner";
+import type { PlanItem } from "../../protocol/events";
+import { BannerAnimator, type BannerInfo, type BannerAnimationOptions } from "./animation/banner-animation";
 
-export function renderGroupyBanner(info: { model: string; cwd: string; user?: string; role?: string }): void {
-  CliFormatter.printBanner(info);
+export function renderGroupyBanner(info: BannerInfo, options?: BannerAnimationOptions): void {
+  BannerAnimator.renderStatic(info);
+}
+
+export async function renderAnimatedGroupyBanner(info: BannerInfo, options?: BannerAnimationOptions): Promise<void> {
+  await BannerAnimator.play(info, options);
+}
+
+export function formatTaskProgressPlan(plan: PlanItem[], explanation?: string): void {
+  CliFormatter.formatTaskProgressPlan(plan, explanation);
 }
 
 export interface TurnSummaryMetrics {
@@ -220,5 +226,31 @@ export class CliFormatter {
     // Highlight markdown headings # Header
     formatted = formatted.replace(/^(#{1,3})\s+(.*)$/gm, `${c.bold}${c.brand}$1 $2${c.reset}`);
     return formatted;
+  }
+
+  static formatTaskProgressPlan(plan: PlanItem[], explanation?: string): void {
+    console.log();
+    const title = explanation ? ` Task Progress: ${explanation} ` : " Task Progress Plan ";
+    const headerLine = `  ┌──${style.brand(title)}${"─".repeat(Math.max(0, 50 - title.length))}`;
+    console.log(headerLine);
+
+    for (let i = 0; i < plan.length; i++) {
+      const item = plan[i];
+      if (!item) continue;
+      let icon = style.dim("[ ]");
+      let text = style.dim(item.step);
+
+      if (item.status === "completed") {
+        icon = style.green("[✓]");
+        text = style.bold(item.step);
+      } else if (item.status === "in_progress") {
+        icon = style.cyan("[⏳]");
+        text = style.cyan(item.step);
+      }
+
+      console.log(`  │  ${icon} ${i + 1}. ${text}`);
+    }
+
+    console.log(`  └──${"─".repeat(50)}\n`);
   }
 }

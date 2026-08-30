@@ -5,6 +5,7 @@
 import { c, style } from "./ui/colors";
 import { InteractiveLineEditor } from "./ui/line-editor";
 import { formatDuration } from "./ui/spinner";
+import { AsciiAnimation, ALL_ANIMATION_VARIANTS, type AnimationVariant } from "./ui/animation";
 import { estimateTotalTokens } from "../context/compactor";
 import { CredentialsStore } from "../auth/store";
 import { AuthClient } from "../auth/oauth";
@@ -37,6 +38,7 @@ export const AVAILABLE_SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "/roles", description: "List available agent roles & nicknames" },
   { name: "/agents", description: "List active sub-agents & execution status" },
   { name: "/mcp", description: "List connected Model Context Protocol servers" },
+  { name: "/animate", description: "Preview 36-frame ASCII art animation variants" },
   { name: "/compact", description: "Trigger manual token history compaction" },
   { name: "/clear", description: "Clear terminal screen" },
   { name: "/logout", description: "Clear stored authentication credentials" },
@@ -117,7 +119,8 @@ export async function handleSlashCommand(
       return true;
 
     case "/skills":
-      printSkills(ctx);
+    case "/skill":
+      handleSkillsCommand(ctx, args);
       return true;
 
     case "/memories":
@@ -132,6 +135,11 @@ export async function handleSlashCommand(
 
     case "/sessions":
       printSessions(ctx);
+      return true;
+
+    case "/animate":
+    case "/animation":
+      await handleAnimate(args[0]);
       return true;
 
     case "/compact":
@@ -387,22 +395,65 @@ function printMcp(ctx: CommandContext): void {
   console.log();
 }
 
-function printSkills(ctx: CommandContext): void {
+function handleSkillsCommand(ctx: CommandContext, args: string[]): void {
   const loader = ctx.skillsLoader;
   if (!loader) {
     console.log(style.yellow("Skills loader not active."));
     return;
   }
 
-  const skills = loader.listSkills(ctx.session.cwd);
+  const sub = (args[0] || "").toLowerCase();
+  const target = (args[1] || "").toLowerCase();
+
+  if (sub === "disable" || sub === "off") {
+    if (!target) {
+      console.log(style.yellow("Usage: /skills disable <skill-name>"));
+      return;
+    }
+    loader.disableSkill(target);
+    console.log(style.yellow(`\n  ✕ Skill '${target}' disabled.\n`));
+    return;
+  }
+
+  if (sub === "enable" || sub === "on") {
+    if (!target) {
+      console.log(style.yellow("Usage: /skills enable <skill-name>"));
+      return;
+    }
+    loader.enableSkill(target);
+    console.log(style.green(`\n  ✓ Skill '${target}' enabled.\n`));
+    return;
+  }
+
+  if (sub === "toggle") {
+    if (!target) {
+      console.log(style.yellow("Usage: /skills toggle <skill-name>"));
+      return;
+    }
+    const state = loader.toggleSkill(target);
+    if (state) {
+      console.log(style.green(`\n  ✓ Skill '${target}' is now ENABLED.\n`));
+    } else {
+      console.log(style.yellow(`\n  ✕ Skill '${target}' is now DISABLED.\n`));
+    }
+    return;
+  }
+
+  const skills = loader.listSkills(ctx.session.cwd, { includeDisabled: true });
   console.log();
   if (skills.length === 0) {
     console.log(style.dim("  No domain skills discovered in .agents/skills/ or ~/.groupy/skills/"));
   } else {
-    console.log(style.bold("  Discovered Domain Skills:"));
+    console.log(style.bold("  Available Domain Skills (Built-in, Workspace, & Global):"));
     for (const s of skills) {
-      console.log(`    • ${style.cyan(s.name)} [${style.dim(s.scope)}]: ${s.description}`);
+      const isEnabled = !loader.isSkillDisabled(s.name);
+      const statusTag = isEnabled ? style.green("[ENABLED]") : style.dim("[DISABLED]");
+      const scopeTag = style.cyan(`[${s.scope}]`);
+      console.log(`    • ${style.bold(s.name)} ${scopeTag} ${statusTag}`);
+      console.log(`      ${style.dim(s.description)}`);
     }
+    console.log();
+    console.log(style.dim("  Commands: /skills disable <name> | /skills enable <name> | /skills toggle <name>"));
   }
   console.log();
 }
@@ -484,3 +535,35 @@ function printSessionStats(ctx: CommandContext): void {
   console.log(style.bold("  └─────────────────────────────────────────────────────────"));
   console.log();
 }
+
+async function handleAnimate(variantName?: string): Promise<void> {
+  const chosen = variantName?.toLowerCase() as AnimationVariant | undefined;
+
+  if (chosen && ALL_ANIMATION_VARIANTS.includes(chosen)) {
+    console.log(`\n  ${style.brand("◆")} Playing 36-frame animation variant: ${style.bold(chosen)}...\n`);
+    const anim = new AsciiAnimation({
+      variant: chosen,
+      frameTickMs: 60,
+      colorFn: (frame) => style.brand(frame),
+    });
+    await anim.play(2500, { clearScreen: false });
+    console.log();
+    return;
+  }
+
+  console.log();
+  console.log(style.bold("  36-Frame ASCII Art Animation Catalog:"));
+  for (const v of ALL_ANIMATION_VARIANTS) {
+    console.log(`    • ${style.cyan(v)} - ${style.dim(`/animate ${v}`)}`);
+  }
+  console.log(`\n  ${style.dim("Playing random variant for 2 seconds...")}\n`);
+  const anim = new AsciiAnimation({
+    variant: "default",
+    frameTickMs: 60,
+    colorFn: (frame) => style.brand(frame),
+  });
+  anim.pickRandomVariant();
+  await anim.play(2000);
+  console.log();
+}
+

@@ -1,12 +1,22 @@
 /**
  * shell / unified_exec tool handler.
- * Runs terminal commands using Bun.spawn with timeout and approval support.
+ * Runs terminal commands using Bun.spawn with timeout, approval escalation, prefix_rule persistence, and kernel sandboxing.
  * 
- * Directly mirrors codex-rs/core/src/tools/handlers/shell_spec.rs.
+ * Directly mirrors codex-rs/core/src/tools/handlers/shell_spec.rs and approvals.rs.
  */
 
 import type { Tool, ToolContext, ToolExecutionResult } from "../types";
 import { ExecPolicy } from "../../security/exec-policy";
+import { globalKernelSandbox } from "../../security/kernel/manager";
+import { globalPrefixRulesStore } from "../../storage/prefix-rules-store";
+
+export interface ShellToolArgs {
+  command: string;
+  timeoutMs?: number;
+  sandbox_permissions?: "require_escalated";
+  prefix_rule?: string[];
+  justification?: string;
+}
 
 export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
   return {
@@ -24,51 +34,117 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
           type: "number",
           description: "Maximum execution time in milliseconds (default: 30000ms).",
         },
+        sandbox_permissions: {
+          type: "string",
+          enum: ["require_escalated"],
+          description: "Request approval to execute command outside the sandbox or with unrestricted network.",
+        },
+        prefix_rule: {
+          type: "array",
+          items: { type: "string", description: "Command prefix token" },
+          description: "Optional command prefix rule to allow matching commands in future sessions.",
+        },
+        justification: {
+          type: "string",
+          description: "Explanation of why escalated privileges or network access is required.",
+        },
       },
       required: ["command"],
     },
 
     async execute(
-      args: Record<string, unknown>,
+      rawArgs: Record<string, unknown>,
       ctx: ToolContext
     ): Promise<ToolExecutionResult> {
-      const command = String(args.command || "").trim();
+      const command = String(rawArgs.command || "").trim();
       if (!command) {
         return { output: "Error: 'command' argument cannot be empty", isError: true };
       }
 
-      // Check execution policy
-      const activePolicy = ctx.execPolicy || policy;
-      const policyDecision = activePolicy.evaluate(command);
+      const args = rawArgs as unknown as ShellToolArgs;
+      const rulesStore = ctx.prefixRulesStore || globalPrefixRulesStore;
+      const cmdTokens = command.split(/\s+/).filter(Boolean);
+      let isEscalated = false;
 
-      if (policyDecision.decision === "deny") {
-        return {
-          output: `Error: Command execution denied by policy: ${policyDecision.reason}`,
-          isError: true,
-        };
+      // 1. Check if command matches an already approved prefix rule
+      if (rulesStore.isApproved(ctx.cwd, cmdTokens)) {
+        isEscalated = true;
+      } else if (args.sandbox_permissions === "require_escalated") {
+        // 2. Handle explicit escalation request
+        if (ctx.requestApproval) {
+          const promptDesc = args.justification || "Executing command with escalated permissions";
+          const approvalResult = await ctx.requestApproval(
+            promptDesc,
+            command,
+            args.prefix_rule
+          );
+
+          const isAllowed = typeof approvalResult === "boolean" ? approvalResult : approvalResult?.allowed;
+          const remember = typeof approvalResult === "object" ? approvalResult?.rememberPrefix : false;
+
+          if (!isAllowed) {
+            return {
+              output: `Command execution cancelled: User declined approval for '${command}'`,
+              isError: true,
+            };
+          }
+
+          if (remember && args.prefix_rule && Array.isArray(args.prefix_rule)) {
+            rulesStore.addRule(ctx.cwd, args.prefix_rule);
+          }
+
+          isEscalated = true;
+        }
       }
 
-      if (policyDecision.decision === "prompt" && ctx.requestApproval) {
-        const approved = await ctx.requestApproval(
-          policyDecision.reason || "Executing external command",
-          command
-        );
+      // 3. If not escalated, evaluate standard ExecPolicy
+      if (!isEscalated) {
+        const activePolicy = ctx.execPolicy || policy;
+        const policyDecision = activePolicy.evaluate(command);
 
-        if (!approved) {
+        if (policyDecision.decision === "deny") {
           return {
-            output: `Command execution cancelled: User declined approval for '${command}'`,
+            output: `Error: Command execution denied by policy: ${policyDecision.reason}`,
             isError: true,
           };
+        }
+
+        if (policyDecision.decision === "prompt" && ctx.requestApproval) {
+          const approvalResult = await ctx.requestApproval(
+            policyDecision.reason || "Executing external command",
+            command
+          );
+
+          const isAllowed = typeof approvalResult === "boolean" ? approvalResult : approvalResult?.allowed;
+          if (!isAllowed) {
+            return {
+              output: `Command execution cancelled: User declined approval for '${command}'`,
+              isError: true,
+            };
+          }
         }
       }
 
       const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : 30000;
       const isWindows = process.platform === "win32";
-      const shellCmd = isWindows ? ["powershell.exe", "-NoProfile", "-Command", command] : ["/bin/sh", "-c", command];
+      const baseCmd = isWindows
+        ? ["powershell.exe", "-NoProfile", "-Command", command]
+        : ["/bin/sh", "-c", command];
+
+      // Build sandbox profile & wrap command (relax network if escalated)
+      const sandboxProfile = globalKernelSandbox.buildDefaultProfile(ctx.cwd);
+      if (isEscalated) {
+        sandboxProfile.allowNetwork = true;
+      }
+      const wrappedCmd = globalKernelSandbox.wrapCommand(baseCmd, sandboxProfile);
 
       try {
-        const proc = Bun.spawn(shellCmd, {
+        const proc = Bun.spawn(wrappedCmd, {
           cwd: ctx.cwd,
+          env: {
+            ...process.env,
+            ...(ctx as any).proxyEnv,
+          },
           stdout: "pipe",
           stderr: "pipe",
         });
@@ -118,7 +194,7 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
         };
       } catch (err) {
         return {
-          output: `Failed to execute command: ${err instanceof Error ? err.message : String(err)}`,
+          output: `Execution error: ${err instanceof Error ? err.message : String(err)}`,
           isError: true,
         };
       }
