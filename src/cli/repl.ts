@@ -118,8 +118,10 @@ export class CliRepl {
             console.log(style.dim("\n  └─────────────────────────────────────────────────────────\n"));
             this.reasoningStarted = false;
           }
-          if (!this.currentTurnHasOutput && msg.delta.trim().length > 0) {
+          if (this.spinner.isActive()) {
             this.spinner.stop();
+          }
+          if (!this.currentTurnHasOutput && msg.delta.trim().length > 0) {
             this.currentTurnHasOutput = true;
           }
           this.turnCharsOut += msg.delta.length;
@@ -160,6 +162,7 @@ export class CliRepl {
             msg.output,
             msg.isError
           );
+          this.spinner.start("Thinking deeply...");
           break;
 
         case "InteractiveApprovalRequired" as any:
