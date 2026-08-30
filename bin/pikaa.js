@@ -26,6 +26,12 @@ const rootDir = join(__dirname, "..");
 const platform = process.platform;
 const arch = process.arch;
 
+let version = "0.2.2";
+try {
+  const pkg = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
+  version = pkg.version;
+} catch {}
+
 function getBinaryName() {
   if (platform === "win32") return arch === "arm64" ? "pikaa-windows-arm64.exe" : "pikaa-windows-x64.exe";
   if (platform === "darwin") return arch === "arm64" ? "pikaa-darwin-arm64" : "pikaa-darwin-x64";
@@ -35,7 +41,7 @@ function getBinaryName() {
 
 const binaryName = getBinaryName();
 const userBinDir = join(homedir(), ".pikaa", "bin");
-const userBinaryPath = binaryName ? join(userBinDir, binaryName) : null;
+const userBinaryPath = binaryName ? join(userBinDir, `pikaa-v${version}-${binaryName}`) : null;
 
 // Look in package directory or user cache directory
 function findExistingBinary() {
@@ -49,6 +55,32 @@ function findExistingBinary() {
     if (c && existsSync(c)) return c;
   }
   return null;
+}
+
+function launchBinary(binPath) {
+  if (platform !== "win32") {
+    try { chmodSync(binPath, 0o755); } catch {}
+  }
+  const r = spawnSync(binPath, process.argv.slice(2), {
+    stdio: "inherit",
+    env: process.env,
+  });
+  process.exit(r.status ?? (r.error ? 1 : 0));
+}
+
+function tryLaunchWithBun() {
+  const jsEntry = join(rootDir, "dist", "cli.js");
+  if (existsSync(jsEntry)) {
+    const probe = spawnSync("bun", ["--version"], { encoding: "utf8" });
+    if (!probe.error) {
+      const r = spawnSync("bun", ["run", jsEntry, ...process.argv.slice(2)], {
+        stdio: "inherit",
+        env: process.env,
+      });
+      process.exit(r.status ?? (r.error ? 1 : 0));
+    }
+  }
+  return false;
 }
 
 async function downloadBinary(url, dest, redirects = 0) {
@@ -72,21 +104,15 @@ async function downloadBinary(url, dest, redirects = 0) {
   });
 }
 
-function launchBinary(binPath) {
-  if (platform !== "win32") {
-    try { chmodSync(binPath, 0o755); } catch {}
-  }
-  const r = spawnSync(binPath, process.argv.slice(2), {
-    stdio: "inherit",
-    env: process.env,
-  });
-  process.exit(r.status ?? (r.error ? 1 : 0));
-}
-
 async function main() {
   const existing = findExistingBinary();
   if (existing) {
     launchBinary(existing);
+    return;
+  }
+
+  // If local bun and dist/cli.js are available, run immediately with 0 download
+  if (tryLaunchWithBun()) {
     return;
   }
 
@@ -95,18 +121,11 @@ async function main() {
     process.exit(1);
   }
 
-  // Auto-download binary on first run
-  let version = "0.2.0";
-  try {
-    const pkg = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
-    version = pkg.version;
-  } catch {}
-
   const downloadUrl = `https://github.com/Neural-Forge-AMD/agent-cli/releases/download/v${version}/${binaryName}`;
 
   try {
     mkdirSync(userBinDir, { recursive: true });
-    process.stderr.write(`\x1b[36m⚡ [pikaa] First-time setup: Downloading native binary for ${platform}/${arch}...\x1b[0m\n`);
+    process.stderr.write(`\x1b[36m⚡ [pikaa] First-time setup: Downloading native binary v${version} for ${platform}/${arch}...\x1b[0m\n`);
     await downloadBinary(downloadUrl, userBinaryPath);
     if (platform !== "win32") {
       chmodSync(userBinaryPath, 0o755);
@@ -116,17 +135,8 @@ async function main() {
   } catch (err) {
     process.stderr.write(`\x1b[33mWarning: Failed to download native binary: ${err.message}\x1b[0m\n`);
 
-    // Try bun fallback if available
-    const jsEntry = join(rootDir, "dist", "cli.js");
-    if (existsSync(jsEntry)) {
-      const probe = spawnSync("bun", ["--version"], { encoding: "utf8" });
-      if (!probe.error) {
-        const r = spawnSync("bun", ["run", jsEntry, ...process.argv.slice(2)], {
-          stdio: "inherit",
-          env: process.env,
-        });
-        process.exit(r.status ?? (r.error ? 1 : 0));
-      }
+    if (tryLaunchWithBun()) {
+      return;
     }
 
     console.error(`\nPlease check your internet connection or install Bun (https://bun.sh) and retry.`);
