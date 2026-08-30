@@ -29,7 +29,7 @@ export class ExecPolicy {
   private initDefaultRules(): void {
     // Read-only / inspection commands -> Allow
     this.addRule(/^(git\s+(status|log|diff|branch|show|rev-parse))/i, "allow", "Safe git query");
-    this.addRule(/^(ls|dir|cat|grep|rg|find|pwd|echo|head|tail|wc|which|where)\b/i, "allow", "Safe read-only shell command");
+    this.addRule(/^(ls|dir|cat|type|grep|rg|find|pwd|echo|head|tail|wc|which|where)\b/i, "allow", "Safe read-only shell command");
     this.addRule(/^(bun\s+(test|--version|-v)|npm\s+(test|--version|-v)|node\s+-v)\b/i, "allow", "Testing & runtime check");
 
     // Potentially dangerous commands -> Prompt user

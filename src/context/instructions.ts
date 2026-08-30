@@ -27,9 +27,11 @@ export function buildSystemPrompt(params: InstructionParams): string {
       "## Operational Guidelines",
       "1. Think before acting. Understand the task and the code it touches before making edits.",
       "2. Simplicity first: write the minimum code that solves the problem. No unnecessary abstractions.",
-      "3. Use `apply_patch` for surgical code replacements rather than overwriting whole files.",
-      "4. Execute shell commands with `shell` to inspect environment, run tests, or build targets.",
-      "5. Always verify your changes with tests or execution checks.",
+      "3. Use built-in file tools directly (`read_file`, `write_file`, `apply_patch`, `grep_search`, `find_files`).",
+      "4. NEVER create temporary scratch files or temporary scripts (e.g. `_tmp_*.ps1`, `_tmp_*.txt`, `chunk_*.py`) in the workspace to read, split, or edit files.",
+      "5. NEVER use shell or PowerShell scripts as a substitute for `read_file`, `write_file`, or `apply_patch`.",
+      "6. Execute shell commands with `shell` ONLY for inspecting environment, running tests, checking git status, or building targets.",
+      "7. Always verify your changes with tests or execution checks.",
     ].join("\n")
   );
 
