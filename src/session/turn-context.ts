@@ -18,7 +18,7 @@ export class TurnContext {
     public readonly model: string,
     public readonly tools: ToolRouter,
     public readonly environment: TurnEnvironment,
-    public readonly maxIterations = 25
+    public readonly maxIterations = 250
   ) {
     this.abortController = new AbortController();
     this.createdAt = Date.now();
