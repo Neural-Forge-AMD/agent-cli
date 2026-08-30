@@ -4,6 +4,8 @@
 
 import { c, style } from "./ui/colors";
 import { InteractiveLineEditor } from "./ui/line-editor";
+import { formatDuration } from "./ui/spinner";
+import { estimateTotalTokens } from "../context/compactor";
 import { CredentialsStore } from "../auth/store";
 import { AuthClient } from "../auth/oauth";
 import type { Session } from "../session/session";
@@ -22,6 +24,7 @@ export interface SlashCommandDef {
 
 export const AVAILABLE_SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "/help", description: "Show command list and help menu" },
+  { name: "/stats", description: "Display session runtime, turn stats & sub-agent status" },
   { name: "/model", description: "Select or switch active AI model" },
   { name: "/models", description: "List available AI models from gateway" },
   { name: "/reasoning", description: "Toggle internal reasoning chain visibility" },
@@ -63,6 +66,12 @@ export async function handleSlashCommand(
     case "/?":
     case "/help":
       printHelp();
+      return true;
+
+    case "/stats":
+    case "/time":
+    case "/uptime":
+      printSessionStats(ctx);
       return true;
 
     case "/model":
@@ -436,5 +445,42 @@ function printSessions(ctx: CommandContext): void {
       console.log(`    • ${style.cyan(t.id)} [${style.dim(t.model)}] - ${style.dim(dateStr)} (${t.itemsCount} items)`);
     }
   }
+  console.log();
+}
+
+function printSessionStats(ctx: CommandContext): void {
+  const uptimeMs = ctx.repl ? Date.now() - ctx.repl.sessionStartTime : 0;
+  const turns = ctx.repl?.turnCount ?? 0;
+  const history = ctx.session.getHistory();
+  const historyTokens = estimateTotalTokens(history);
+  const maxTokens = 128000;
+  const contextPct = Math.round((historyTokens / maxTokens) * 100);
+  const colorFn = contextPct < 50 ? style.green : contextPct < 80 ? style.yellow : style.red;
+
+  const agents = ctx.spawner?.listAgents() || [];
+  const activeAgents = agents.filter((a) => a.status === "running");
+
+  console.log();
+  console.log(style.bold("  ┌── Session Runtime & Statistics ─────────────────────────"));
+  console.log(`  │  ${style.dim("Uptime:")}         ${style.bold(formatDuration(uptimeMs))}`);
+  console.log(`  │  ${style.dim("Turns:")}          ${turns} completed`);
+  console.log(`  │  ${style.dim("History Items:")}  ${history.length} items`);
+  console.log(`  │  ${style.dim("Context Usage:")}  ${colorFn(`${contextPct}%`)} ${style.dim(`(~${historyTokens} tokens / ${maxTokens} max)`)}`);
+  console.log(`  │  ${style.dim("Model:")}          ${style.brand(ctx.session.model)}`);
+  console.log(`  │  ${style.dim("Working Dir:")}    ${style.dim(ctx.session.cwd)}`);
+  console.log("  │");
+
+  if (agents.length === 0) {
+    console.log(`  │  ${style.dim("Sub-agents:")}     None spawned yet`);
+  } else {
+    console.log(`  │  ${style.bold("Sub-agents:")} (${activeAgents.length} active, ${agents.length - activeAgents.length} completed)`);
+    for (const a of agents) {
+      const runtime = formatDuration(Date.now() - a.createdAt);
+      const icon = a.status === "running" ? style.brand("●") : a.status === "completed" ? style.green("✔") : style.red("✗");
+      console.log(`  │    ${icon} ${style.cyan(a.nickname)} [${style.dim(a.role)}] - ${a.status} (${runtime})`);
+      console.log(`  │      ${style.dim(`Task: ${a.taskName}`)}`);
+    }
+  }
+  console.log(style.bold("  └─────────────────────────────────────────────────────────"));
   console.log();
 }

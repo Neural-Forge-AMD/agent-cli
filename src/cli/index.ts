@@ -199,7 +199,7 @@ async function main(): Promise<void> {
 
 async function handleLogin(authClient: AuthClient, backendUrl?: string): Promise<void> {
   const targetBackend = backendUrl || process.env.GROUPY_BACKEND_URL || "https://api.groupy-hub.store";
-  console.log(style.brand(`\n🔐 Logging into Backend: ${targetBackend}`));
+  console.log(style.brand(`\n Logging into Backend: ${targetBackend}`));
 
   try {
     const { authUrl, waitForToken } = await authClient.startOAuthFlow({

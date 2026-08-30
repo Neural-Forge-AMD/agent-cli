@@ -4,10 +4,13 @@
  */
 
 import { c, style } from "./colors";
+import { parsePatch, renderDiff } from "./diff";
 
 export class MarkdownHighlighter {
   private inCodeBlock = false;
   private currentLanguage = "";
+  private diffBuffer: string[] = [];
+  private inDiffBlock = false;
   private lineBuffer = "";
 
   /**
@@ -52,17 +55,42 @@ export class MarkdownHighlighter {
       if (!this.inCodeBlock) {
         this.inCodeBlock = true;
         this.currentLanguage = fenceMatch[1] || "";
+        // Diff blocks are buffered and rendered at close
+        if (this.currentLanguage.toLowerCase() === "diff") {
+          this.inDiffBlock = true;
+          this.diffBuffer = [];
+          return "";
+        }
         const langBadge = this.currentLanguage ? ` ${style.brandBold(this.currentLanguage.toUpperCase())} ` : "";
         return `\n  ${style.dim("┌──")}${langBadge}${style.dim("─".repeat(Math.max(10, 60 - (this.currentLanguage.length + 6))))}`;
       } else {
         this.inCodeBlock = false;
         this.currentLanguage = "";
+        if (this.inDiffBlock) {
+          this.inDiffBlock = false;
+          const raw = this.diffBuffer.join("\n");
+          this.diffBuffer = [];
+          // Parse unified diff format (lines starting with +/-/ )
+          const oldLines: string[] = [];
+          const newLines: string[] = [];
+          for (const l of raw.split("\n")) {
+            if (l.startsWith("-")) { oldLines.push(l.slice(1)); newLines.push(""); }
+            else if (l.startsWith("+")) { oldLines.push(""); newLines.push(l.slice(1)); }
+            else { oldLines.push(l.startsWith(" ") ? l.slice(1) : l); newLines.push(l.startsWith(" ") ? l.slice(1) : l); }
+          }
+          const diffLines = parsePatch(oldLines.join("\n"), newLines.join("\n"), 3);
+          return "\n" + renderDiff(diffLines) + "\n";
+        }
         return `  ${style.dim("└" + "─".repeat(60))}\n`;
       }
     }
 
     // 2. Inside Code Block -> Apply language-specific or general syntax highlighting
     if (this.inCodeBlock) {
+      if (this.inDiffBlock) {
+        this.diffBuffer.push(line);
+        return ""; // buffered; rendered at closing fence
+      }
       const highlightedCode = this.highlightCode(line, this.currentLanguage);
       return `  ${style.dim("│")} ${highlightedCode}`;
     }

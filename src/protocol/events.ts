@@ -44,6 +44,10 @@ export type EventMsg =
       type: "TurnCompleted";
       turnId: string;
       totalTokens?: number;
+      inputTokens?: number;
+      outputTokens?: number;
+      contextTokens?: number;
+      maxContextTokens?: number;
     }
   | {
       type: "ApprovalRequired";

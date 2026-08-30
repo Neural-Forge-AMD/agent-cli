@@ -7,10 +7,18 @@
 
 import { c, style } from "./ui/colors";
 import { LiveSpinner } from "./ui/spinner";
-import { renderGroupyBanner, formatToolCard } from "./ui/formatter";
+import {
+  renderGroupyBanner,
+  formatToolCard,
+  formatTurnSummary,
+  formatTaskStepStart,
+  formatTaskStepFinish,
+} from "./ui/formatter";
 import { handleSlashCommand, AVAILABLE_SLASH_COMMANDS } from "./commands";
 import { InteractiveLineEditor } from "./ui/line-editor";
+import { promptToolApproval } from "./ui/prompt";
 import { MarkdownHighlighter } from "./ui/markdown";
+import { CredentialsStore } from "../auth/store";
 import type { Session } from "../session/session";
 import type { AgentSpawner } from "../agents/spawner";
 import type { McpManager } from "../mcp/manager";
@@ -33,6 +41,8 @@ export interface ReplOptions {
 
 export class CliRepl {
   public showReasoning = false;
+  public readonly sessionStartTime = Date.now();
+  public turnCount = 0;
 
   private session: Session;
   private spawner?: AgentSpawner;
@@ -49,6 +59,13 @@ export class CliRepl {
   private isClosed = false;
   private highlighter = new MarkdownHighlighter();
   private turnDoneResolver?: () => void;
+
+  // Turn Metrics Tracking
+  private turnStartTime = 0;
+  private turnToolCalls: string[] = [];
+  private turnFilesModified = new Set<string>();
+  private turnCharsOut = 0;
+  private activeToolArgs: Record<string, unknown> = {};
 
   constructor(options: ReplOptions) {
     this.session = options.session;
@@ -71,9 +88,13 @@ export class CliRepl {
       switch (msg.type) {
         case "TurnStarted":
           this.isProcessing = true;
+          this.turnCount++;
           this.currentTurnHasOutput = false;
           this.reasoningStarted = false;
-          this.highlighter = new MarkdownHighlighter();
+          this.turnStartTime = performance.now();
+          this.turnToolCalls = [];
+          this.turnFilesModified.clear();
+          this.turnCharsOut = 0;
           this.spinner.start("Thinking...");
           break;
 
@@ -82,7 +103,7 @@ export class CliRepl {
           if (this.showReasoning) {
             if (!this.reasoningStarted) {
               this.spinner.stop();
-              console.log(style.dim("\n  ┌── 💭 Thinking ──────────────────────────────────────────"));
+              console.log(style.dim("\n  ┌──  Thinking ──────────────────────────────────────────"));
               this.reasoningStarted = true;
             }
             process.stdout.write(style.dim((msg as any).delta));
@@ -101,6 +122,7 @@ export class CliRepl {
             this.spinner.stop();
             this.currentTurnHasOutput = true;
           }
+          this.turnCharsOut += msg.delta.length;
           if (this.currentTurnHasOutput) {
             const formatted = this.highlighter.feed(msg.delta);
             if (formatted) {
@@ -115,14 +137,29 @@ export class CliRepl {
             this.reasoningStarted = false;
           }
           this.spinner.stop();
+          this.turnToolCalls.push(msg.toolName);
+          this.activeToolArgs = msg.arguments || {};
+          if (
+            (msg.toolName === "apply_patch" || msg.toolName === "write_file") &&
+            msg.arguments &&
+            typeof (msg.arguments as any).path === "string"
+          ) {
+            this.turnFilesModified.add((msg.arguments as any).path);
+          }
           console.log();
-          formatToolCard(msg.toolName, msg.arguments);
-          this.spinner.start(`Executing ${msg.toolName}...`);
+          formatTaskStepStart(this.turnToolCalls.length, msg.toolName, msg.arguments);
+          this.spinner.start(`Executing [${this.turnToolCalls.length}] ${msg.toolName}...`);
           break;
 
         case "ToolCallFinished":
           this.spinner.stop();
-          formatToolCard(msg.toolName, {}, msg.output, msg.isError);
+          formatTaskStepFinish(
+            this.turnToolCalls.length,
+            msg.toolName,
+            this.activeToolArgs,
+            msg.output,
+            msg.isError
+          );
           break;
 
         case "InteractiveApprovalRequired" as any:
@@ -142,13 +179,30 @@ export class CliRepl {
             process.stdout.write(flushed);
           }
           this.isProcessing = false;
-          console.log();
-          if (msg.totalTokens) {
-            console.log(
-              style.dim(`[Turn completed | ${msg.totalTokens} tokens]`)
-            );
-          }
-          console.log();
+
+          // Render Claude-style Turn Summary Bar with Stats & Metrics
+          const durationMs = this.turnStartTime > 0 ? performance.now() - this.turnStartTime : 0;
+          const sessionUptimeMs = Date.now() - this.sessionStartTime;
+          const subAgents = this.spawner?.listAgents().map((a) => ({
+            nickname: a.nickname,
+            role: a.role,
+            status: a.status,
+            runningTimeMs: Date.now() - a.createdAt,
+          }));
+
+          formatTurnSummary({
+            durationMs,
+            inputTokens: msg.inputTokens,
+            outputTokens: msg.outputTokens || (this.turnCharsOut > 0 ? Math.round(this.turnCharsOut / 3.8) : undefined),
+            totalTokens: msg.totalTokens,
+            contextTokens: msg.contextTokens,
+            maxContextTokens: msg.maxContextTokens,
+            sessionUptimeMs,
+            subAgents,
+            toolCalls: this.turnToolCalls,
+            filesModified: Array.from(this.turnFilesModified),
+          });
+
           if (this.turnDoneResolver) {
             const resolve = this.turnDoneResolver;
             this.turnDoneResolver = undefined;
@@ -181,25 +235,19 @@ export class CliRepl {
     description: string;
     command?: string;
   }): Promise<void> {
-    console.log();
-    console.log(style.yellow(`[!] Approval Required for action:`));
-    console.log(`    Tool: ${style.bold(msg.toolName)}`);
-    if (msg.command) {
-      console.log(`    Command: ${style.cyan(msg.command)}`);
-    }
-    console.log(`    Reason: ${style.dim(msg.description)}`);
-
     try {
-      const editor = new InteractiveLineEditor({ promptSymbol: style.bold(`\nAllow execution? [y/N]: `) });
-      const answer = (await editor.readLine()).trim().toLowerCase();
+      const decision = await promptToolApproval(msg);
 
-      const approved = answer === "y" || answer === "yes";
-      this.session.resolveApproval(msg.approvalId, approved);
-
-      if (approved) {
+      if (decision === "always") {
+        this.session.execPolicy.addRule(/.*/, "allow", "User allowed all actions for this session");
+        this.session.resolveApproval(msg.approvalId, true);
+        this.spinner.start(`Executing approved action (auto-approved for session)...`);
+      } else if (decision === "yes") {
+        this.session.resolveApproval(msg.approvalId, true);
         this.spinner.start(`Executing approved action...`);
       } else {
-        console.log(style.dim("Action rejected by user."));
+        this.session.resolveApproval(msg.approvalId, false);
+        console.log(style.dim("  Action rejected by user."));
       }
     } catch {
       this.session.resolveApproval(msg.approvalId, false);
@@ -208,13 +256,18 @@ export class CliRepl {
 
   async start(): Promise<void> {
     // 1. Render Groupy Emblem & Banner
+    const creds = new CredentialsStore().load();
+    const accountUser = creds?.user?.username || creds?.user?.email || (creds?.accessToken ? "Authenticated" : undefined);
+
     renderGroupyBanner({
+      user: accountUser,
       role: this.role,
       model: this.session.model,
       cwd: this.session.cwd,
     });
 
     const editor = new InteractiveLineEditor({
+      cwd: this.session.cwd,
       onInterrupt: () => {
         if (this.isProcessing) {
           const activeTurn = this.session.getActiveTurn();

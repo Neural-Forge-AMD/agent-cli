@@ -69,6 +69,8 @@ export async function runTurn(
   });
 
   let iteration = 0;
+  let accumulatedInputTokens = 0;
+  let accumulatedOutputTokens = 0;
   const clientSession = session.modelClient.newSession();
 
   try {
@@ -84,6 +86,9 @@ export async function runTurn(
         name: string;
         arguments: Record<string, unknown>;
       }> = [];
+
+      let iterInputTokens = Math.ceil((effectiveSystemPrompt.length + JSON.stringify(session.getHistory()).length) / 4);
+      let iterOutputTokens = 0;
 
       // Stream sampling request
       const stream = clientSession.stream({
@@ -114,10 +119,20 @@ export async function runTurn(
           });
         } else if (chunk.type === "tool_call") {
           toolCallRequests.push(chunk);
+        } else if (chunk.type === "done") {
+          if (chunk.inputTokens !== undefined) iterInputTokens = chunk.inputTokens;
+          if (chunk.outputTokens !== undefined) iterOutputTokens = chunk.outputTokens;
         } else if (chunk.type === "error") {
           throw chunk.error;
         }
       }
+
+      if (iterOutputTokens === 0) {
+        iterOutputTokens = Math.ceil((currentAgentText.length + JSON.stringify(toolCallRequests).length) / 4);
+      }
+
+      accumulatedInputTokens += iterInputTokens;
+      accumulatedOutputTokens += iterOutputTokens;
 
       // Record any agent text message generated in this iteration
       if (currentAgentText.trim()) {
@@ -168,6 +183,7 @@ export async function runTurn(
               cwd: turnContext.environment.cwd,
               turnId,
               signal,
+              execPolicy: session.execPolicy,
               requestApproval: async (description, command) => {
                 const approvalId = `appr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
                 return session.requestApproval({
@@ -213,9 +229,17 @@ export async function runTurn(
       break;
     }
 
+    const totalContextTokens = estimateTotalTokens(session.getHistory()) + Math.ceil(effectiveSystemPrompt.length / 4);
+    const maxContextTokens = 128000;
+
     session.emitEvent({
       type: "TurnCompleted",
       turnId,
+      inputTokens: accumulatedInputTokens,
+      outputTokens: accumulatedOutputTokens,
+      totalTokens: accumulatedInputTokens + accumulatedOutputTokens,
+      contextTokens: totalContextTokens,
+      maxContextTokens,
     });
   } catch (error) {
     const isAborted = error instanceof TurnAbortedError || signal.aborted;

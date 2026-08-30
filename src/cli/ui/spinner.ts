@@ -4,12 +4,29 @@
 
 import { c, style } from "./colors";
 
+export function formatDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec < 60) {
+    const sec = (ms / 1000).toFixed(1);
+    return `${sec}s`;
+  }
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = totalSec % 60;
+  if (minutes < 60) {
+    return `${minutes}m ${seconds}s`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return `${hours}h ${remMinutes}m ${seconds}s`;
+}
+
 export class LiveSpinner {
   private frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   private frameIndex = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private currentMessage = "";
   private isSpinning = false;
+  private startTime = 0;
 
   start(message = "Thinking..."): void {
     if (this.isSpinning) {
@@ -19,6 +36,7 @@ export class LiveSpinner {
 
     this.isSpinning = true;
     this.currentMessage = message;
+    this.startTime = performance.now();
     this.frameIndex = 0;
 
     // Render immediately
@@ -43,7 +61,10 @@ export class LiveSpinner {
 
   private render(): void {
     const frame = this.frames[this.frameIndex];
-    const output = `\r\x1b[K${c.cyan}${frame}${c.reset} ${c.dim}${this.currentMessage}${c.reset}`;
+    const elapsedMs = performance.now() - this.startTime;
+    const elapsedStr = formatDuration(elapsedMs);
+    const timeBadge = style.dim(`(${elapsedStr})`);
+    const output = `\r\x1b[K  ${c.cyan}${frame}${c.reset} ${c.dim}${this.currentMessage}${c.reset} ${timeBadge}`;
     process.stdout.write(output);
   }
 

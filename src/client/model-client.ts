@@ -26,6 +26,8 @@ export type StreamChunkEvent =
   | {
       type: "done";
       totalTokens?: number;
+      inputTokens?: number;
+      outputTokens?: number;
     }
   | {
       type: "error";
@@ -154,6 +156,7 @@ export class DefaultModelClientSession implements ModelClientSession {
       model,
       messages,
       stream: true,
+      stream_options: { include_usage: true },
       temperature: params.temperature ?? 0.2,
     };
 
@@ -208,6 +211,7 @@ export class DefaultModelClientSession implements ModelClientSession {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let usageMetrics: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
 
     // Accumulators for multi-chunk tool calls
     const pendingToolCalls = new Map<
@@ -244,12 +248,25 @@ export class DefaultModelClientSession implements ModelClientSession {
               };
             }
             pendingToolCalls.clear();
-            yield { type: "done" };
+            yield {
+              type: "done",
+              inputTokens: usageMetrics.inputTokens,
+              outputTokens: usageMetrics.outputTokens,
+              totalTokens: usageMetrics.totalTokens,
+            };
             return;
           }
 
           try {
             const data = JSON.parse(dataStr);
+            if (data.usage) {
+              usageMetrics = {
+                inputTokens: data.usage.prompt_tokens,
+                outputTokens: data.usage.completion_tokens,
+                totalTokens: data.usage.total_tokens,
+              };
+            }
+
             const choice = data.choices?.[0];
             if (!choice) continue;
 

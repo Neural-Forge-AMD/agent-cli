@@ -16,6 +16,7 @@ import { handleTurnInput } from "./turn-input";
 
 import type { SkillsLoader } from "../skills/loader";
 import type { MemoryStore } from "../memories/store";
+import { ExecPolicy } from "../security/exec-policy";
 
 export interface SessionOptions {
   threadId?: string;
@@ -27,6 +28,7 @@ export interface SessionOptions {
   initialHistory?: ConversationItem[];
   skillsLoader?: SkillsLoader;
   memoryStore?: MemoryStore;
+  execPolicy?: ExecPolicy;
   onEvent?: (event: Event) => void;
 }
 
@@ -39,6 +41,7 @@ export class Session {
   public readonly tools: ToolRouter;
   public readonly skillsLoader?: SkillsLoader;
   public readonly memoryStore?: MemoryStore;
+  public readonly execPolicy: ExecPolicy;
 
   private history: ConversationItem[] = [];
   private activeTurn: TurnContext | null = null;
@@ -62,6 +65,7 @@ export class Session {
     this.tools = options.tools || new ToolRouter();
     this.skillsLoader = options.skillsLoader;
     this.memoryStore = options.memoryStore;
+    this.execPolicy = options.execPolicy || new ExecPolicy();
     this.history = options.initialHistory ? [...options.initialHistory] : [];
 
     if (options.onEvent) {

@@ -15,10 +15,13 @@ export interface ToolParametersSchema {
   required?: string[];
 }
 
+import type { ExecPolicy } from "../security/exec-policy";
+
 export interface ToolContext {
   cwd: string;
   turnId: string;
   signal?: AbortSignal;
+  execPolicy?: ExecPolicy;
   requestApproval?: (description: string, command?: string) => Promise<boolean>;
 }
 

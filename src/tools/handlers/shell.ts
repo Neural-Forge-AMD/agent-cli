@@ -38,7 +38,8 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
       }
 
       // Check execution policy
-      const policyDecision = policy.evaluate(command);
+      const activePolicy = ctx.execPolicy || policy;
+      const policyDecision = activePolicy.evaluate(command);
 
       if (policyDecision.decision === "deny") {
         return {
