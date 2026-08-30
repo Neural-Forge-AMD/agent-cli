@@ -23,6 +23,7 @@ export interface ToolContext {
   signal?: AbortSignal;
   execPolicy?: ExecPolicy;
   requestApproval?: (description: string, command?: string) => Promise<boolean>;
+  requestInput?: (question: string, options?: string[]) => Promise<string>;
 }
 
 export type ToolExecutionContext = ToolContext;

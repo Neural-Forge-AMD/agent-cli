@@ -48,6 +48,7 @@ export class Session {
   private status: SessionStatus = "idle";
   private eventListeners: Array<(event: Event) => void> = [];
   private pendingApprovals = new Map<string, (approved: boolean) => void>();
+  private pendingUserQuestions = new Map<string, (answer: string) => void>();
 
   // Async queue for submissions
   private submissionResolvers: Array<(sub: Submission) => void> = [];
@@ -196,6 +197,45 @@ export class Session {
     if (resolver) {
       this.pendingApprovals.delete(approvalId);
       resolver(approved);
+    }
+  }
+
+  // --- Interactive Questions / Elicitation Handling ---
+
+  requestUserQuestion(params: {
+    questionId: string;
+    turnId: string;
+    question: string;
+    options?: string[];
+  }): Promise<string> {
+    this.emitEvent({
+      type: "UserQuestionRequired",
+      questionId: params.questionId,
+      turnId: params.turnId,
+      question: params.question,
+      options: params.options,
+    });
+    this.emitEvent({
+      type: "StatusChanged",
+      status: "waiting_user_input",
+    });
+
+    return new Promise<string>((resolve) => {
+      this.pendingUserQuestions.set(params.questionId, (answer) => {
+        this.emitEvent({
+          type: "StatusChanged",
+          status: "running",
+        });
+        resolve(answer);
+      });
+    });
+  }
+
+  resolveUserQuestion(questionId: string, answer: string): void {
+    const resolver = this.pendingUserQuestions.get(questionId);
+    if (resolver) {
+      this.pendingUserQuestions.delete(questionId);
+      resolver(answer);
     }
   }
 

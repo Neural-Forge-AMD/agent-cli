@@ -9,7 +9,7 @@ import { ToolRouter } from "./router";
 import { applyPatchTool } from "./handlers/apply-patch";
 import { shellTool } from "./handlers/shell";
 import { readFileTool, writeFileTool, listDirTool } from "./handlers/file-ops";
-import { requestUserInputTool } from "./handlers/request-user-input";
+import { requestUserInputTool, askQuestionTool } from "./handlers/request-user-input";
 import { createFileSearchTools } from "../search/tools";
 import { createCodeModeTools } from "../code-mode/tools";
 import type { SkillsLoader } from "../skills/loader";
@@ -37,6 +37,7 @@ export function createDefaultTools(options: DefaultToolsOptions = {}): ToolRoute
   router.register(writeFileTool);
   router.register(listDirTool);
   router.register(requestUserInputTool);
+  router.register(askQuestionTool);
 
   // File Search & Grep Tools
   for (const tool of createFileSearchTools()) {

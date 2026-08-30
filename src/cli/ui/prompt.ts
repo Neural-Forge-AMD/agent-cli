@@ -179,3 +179,87 @@ export async function promptToolApproval(params: {
 
   return decision;
 }
+
+export interface PromptQuestionParams {
+  question: string;
+  options?: string[];
+}
+
+/**
+ * Interactive Question & Choice Selector for Agent Elicitation / Clarifications.
+ * Displays questions, numbered choices with (Recommended) highlights, and free-text write-in.
+ */
+export async function promptUserQuestion(params: PromptQuestionParams): Promise<string> {
+  const { question, options = [] } = params;
+  const boxWidth = Math.min(process.stdout.columns ?? 80, 75);
+  const border = "─".repeat(Math.max(10, boxWidth - 20));
+
+  console.log(`\n  ${style.cyan("┌──")} ${style.bold("AI Question")} ${style.cyan(border)}`);
+
+  const qLines = question.split("\n");
+  for (const line of qLines) {
+    console.log(`  ${style.cyan("│")}  ${style.bold(line)}`);
+  }
+
+  if (options.length > 0) {
+    console.log(`  ${style.cyan("│")}`);
+    options.forEach((opt, idx) => {
+      const numTag = style.cyan(`[${idx + 1}]`);
+      const isRec = opt.includes("(Recommended)") || opt.includes("(recommended)");
+      const optText = isRec
+        ? opt.replace(/\(Recommended\)/i, style.green("(Recommended)"))
+        : opt;
+      console.log(`  ${style.cyan("│")}  ${numTag} ${optText}`);
+    });
+  }
+  console.log(`  ${style.cyan("└" + "─".repeat(Math.max(10, boxWidth - 4)))}\n`);
+
+  if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    return options[0] || "yes";
+  }
+
+  return new Promise<string>((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const promptLabel = options.length > 0
+      ? `Select [1-${options.length}] or type custom response: `
+      : `Your response: `;
+
+    rl.question(`  ${style.bold(promptLabel)}`, (answer) => {
+      rl.close();
+      const trimmed = answer.trim();
+      if (!trimmed) {
+        const fallback = options[0] || "";
+        console.log(style.dim(`  ↳ Default: ${fallback || "(empty)"}\n`));
+        resolve(fallback);
+        return;
+      }
+
+      // 1. Check numeric choice
+      const num = parseInt(trimmed, 10);
+      if (!isNaN(num) && num >= 1 && num <= options.length) {
+        const picked = options[num - 1]!;
+        console.log(style.green(`  ✔ Selected: ${picked}\n`));
+        resolve(picked);
+        return;
+      }
+
+      // 2. Check y/yes / n/no shorthand if options length is 2 (e.g. Yes/No)
+      if (options.length === 2) {
+        if (/^(y|yes)$/i.test(trimmed)) {
+          console.log(style.green(`  ✔ Selected: ${options[0]}\n`));
+          resolve(options[0]!);
+          return;
+        }
+        if (/^(n|no)$/i.test(trimmed)) {
+          console.log(style.green(`  ✔ Selected: ${options[1]}\n`));
+          resolve(options[1]!);
+          return;
+        }
+      }
+
+      // 3. Custom write-in response
+      console.log(style.green(`  ✔ Answer: ${trimmed}\n`));
+      resolve(trimmed);
+    });
+  });
+}

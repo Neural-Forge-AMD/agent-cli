@@ -16,7 +16,7 @@ import {
 } from "./ui/formatter";
 import { handleSlashCommand, AVAILABLE_SLASH_COMMANDS } from "./commands";
 import { InteractiveLineEditor } from "./ui/line-editor";
-import { promptToolApproval } from "./ui/prompt";
+import { promptToolApproval, promptUserQuestion } from "./ui/prompt";
 import { MarkdownHighlighter } from "./ui/markdown";
 import { CredentialsStore } from "../auth/store";
 import type { Session } from "../session/session";
@@ -168,6 +168,11 @@ export class CliRepl {
           await this.handleInteractiveApproval(msg as any);
           break;
 
+        case "UserQuestionRequired":
+          this.spinner.stop();
+          await this.handleInteractiveUserQuestion(msg as any);
+          break;
+
         case "TurnCompleted":
           if (this.reasoningStarted) {
             console.log(style.dim("\n  └─────────────────────────────────────────────────────────\n"));
@@ -251,6 +256,23 @@ export class CliRepl {
       }
     } catch {
       this.session.resolveApproval(msg.approvalId, false);
+    }
+  }
+
+  private async handleInteractiveUserQuestion(msg: {
+    questionId: string;
+    question: string;
+    options?: string[];
+  }): Promise<void> {
+    try {
+      const answer = await promptUserQuestion({
+        question: msg.question,
+        options: msg.options,
+      });
+      this.session.resolveUserQuestion(msg.questionId, answer);
+      this.spinner.start(`Processing response and continuing...`);
+    } catch {
+      this.session.resolveUserQuestion(msg.questionId, "");
     }
   }
 

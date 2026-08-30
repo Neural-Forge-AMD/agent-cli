@@ -194,6 +194,15 @@ export async function runTurn(
                   command,
                 });
               },
+              requestInput: async (question, options) => {
+                const questionId = `quest_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+                return session.requestUserQuestion({
+                  questionId,
+                  turnId,
+                  question,
+                  options,
+                });
+              },
             }
           );
 

@@ -31,6 +31,7 @@ export function buildSystemPrompt(params: InstructionParams): string {
       "- NEVER create temporary scripts, scratch files, or chunk files (e.g. `_tmp_*.ps1`, `_tmp_*.txt`, `split_*.py`) in the workspace to manipulate, split, or read files.",
       "- NEVER execute shell or PowerShell scripts as a workaround for reading, writing, or editing text files.",
       "- Use the `shell` tool ONLY for running tests, build targets, package installations, or checking environment/git status.",
+      "- When user requirements are ambiguous or require architectural decisions, use `request_user_input` or `ask_question` to present 2-4 clear options. Prefix your recommended choice with `(Recommended)` (e.g. `['(Recommended) Option A', 'Option B']`).",
       "- You may be in a dirty git worktree. NEVER revert existing changes made by the user.",
       "- NEVER use destructive commands like `git reset --hard` or `git checkout --`.",
       "- Be concise, direct, and act surgically. Write clean, correct code with minimal necessary modifications.",

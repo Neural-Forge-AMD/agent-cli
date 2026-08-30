@@ -4,7 +4,7 @@
 
 import type { ConversationItem } from "./items";
 
-export type SessionStatus = "idle" | "running" | "waiting_approval" | "interrupted" | "terminated";
+export type SessionStatus = "idle" | "running" | "waiting_approval" | "waiting_user_input" | "interrupted" | "terminated";
 
 export type EventMsg =
   | {
@@ -56,6 +56,13 @@ export type EventMsg =
       toolName: string;
       command?: string;
       description: string;
+    }
+  | {
+      type: "UserQuestionRequired";
+      questionId: string;
+      turnId: string;
+      question: string;
+      options?: string[];
     }
   | {
       type: "ToolCallStarted";
