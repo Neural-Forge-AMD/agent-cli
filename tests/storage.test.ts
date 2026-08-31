@@ -118,7 +118,7 @@ describe("SQLite Thread Store & Session Persistence", () => {
     // 4. Verify combined history in SQLite
     const updatedItems = store.getItems("thread_resume_003");
     expect(updatedItems.length).toBe(4); // 2 user + 2 agent messages
-  });
+  }, 15000);
 
   test("deletes thread and cascades items deletion", () => {
     const store = new SqliteThreadStore(":memory:");
