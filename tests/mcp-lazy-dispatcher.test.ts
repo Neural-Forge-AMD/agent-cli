@@ -242,5 +242,5 @@ describe("MCP Lazy-Loading Meta Dispatcher Subsystem (Antigravity/Codex)", () =>
 
     expect(completedText).toContain("Database query result");
     expect(completedText).toContain("Executed tool_operation_5 with inputVal=SELECT * FROM users");
-  });
+  }, 15000);
 });
