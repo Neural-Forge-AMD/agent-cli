@@ -55,17 +55,18 @@ export async function runTurn(
     item: userItem,
   });
 
-  // Step 3: Capture World State, Memories, Skills & Build Prompt
   const cwd = turnContext.environment.cwd;
   const worldState = await captureWorldState(cwd);
   const memoriesPrompt = session.memoryStore?.formatMemoriesPrompt(cwd);
   const skillsPrompt = session.skillsLoader?.formatSkillsPrompt(cwd);
+  const mcpPrompt = session.mcpManager?.formatMcpPrompt();
 
   const effectiveSystemPrompt = buildSystemPrompt({
     basePrompt: session.systemPrompt || undefined,
     worldStatePrompt: formatWorldStatePrompt(worldState),
     memoriesPrompt,
     skillsPrompt,
+    mcpPrompt,
     isOrchestrator: session.tools.has("spawn_agent"),
     cwd,
   });

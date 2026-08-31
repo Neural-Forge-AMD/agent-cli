@@ -145,6 +145,7 @@ async function main(): Promise<void> {
         tools,
         skillsLoader,
         memoryStore,
+        mcpManager,
         modelClient,
       });
       console.log(style.brand(`[Resumed session: ${resumeThreadId}]`));
@@ -159,6 +160,7 @@ async function main(): Promise<void> {
       tools,
       skillsLoader,
       memoryStore,
+      mcpManager,
       modelClient,
     });
     storageManager.bindSession(session, role);

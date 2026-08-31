@@ -144,11 +144,13 @@ export type McpServerConfig =
       args?: string[];
       env?: Record<string, string>;
       cwd?: string;
+      lazy?: boolean;
     }
   | {
       type: "sse";
       url: string;
       headers?: Record<string, string>;
+      lazy?: boolean;
     };
 
 export interface McpServersConfigFile {

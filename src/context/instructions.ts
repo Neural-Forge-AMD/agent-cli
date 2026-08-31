@@ -22,6 +22,7 @@ export interface InstructionParams {
   worldStatePrompt?: string;
   memoriesPrompt?: string;
   skillsPrompt?: string;
+  mcpPrompt?: string;
   collaborationMode?: CollaborationModeKind;
   personality?: PersonalityKind;
   isOrchestrator?: boolean;
@@ -128,7 +129,12 @@ export function buildSystemPrompt(params: InstructionParams): string {
     sections.push(params.skillsPrompt.trim());
   }
 
-  // 9. Developer specific instructions
+  // 9. Model Context Protocol (MCP) Servers catalog (Lazy & Eager)
+  if (params.mcpPrompt) {
+    sections.push(params.mcpPrompt.trim());
+  }
+
+  // 10. Developer specific instructions
   if (params.developerInstructions) {
     sections.push(`## Developer Instructions\n${params.developerInstructions}`);
   }
