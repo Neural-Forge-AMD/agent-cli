@@ -9,6 +9,7 @@ import type {
   JsonRpcMessage,
 } from "./types";
 import { GroupyError } from "../protocol/errors";
+import { GlobalProcessRegistry } from "./process-killer";
 
 export interface McpTransport {
   start(): Promise<void>;
@@ -52,6 +53,10 @@ export class StdioTransport implements McpTransport {
         stdout: "pipe",
         stderr: "pipe",
       });
+
+      if (this.proc && this.proc.pid) {
+        GlobalProcessRegistry.register(this.proc.pid, fullCmd.join(" "), () => this.close());
+      }
 
       this.readStdoutLoop();
       this.readStderrLoop();
@@ -178,14 +183,22 @@ export class StdioTransport implements McpTransport {
     this.isClosed = true;
     for (const [, pending] of this.pendingRequests) {
       clearTimeout(pending.timer);
-      pending.reject(new GroupyError("MCP transport closed"));
+      try {
+        pending.reject(new GroupyError("MCP transport closed"));
+      } catch {}
     }
     this.pendingRequests.clear();
 
     if (this.proc) {
+      const pid = this.proc.pid;
       try {
         this.proc.kill();
       } catch {}
+
+      if (pid) {
+        GlobalProcessRegistry.killProcessTree(pid);
+        GlobalProcessRegistry.unregister(pid);
+      }
       this.proc = null;
     }
   }

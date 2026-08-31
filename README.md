@@ -3,132 +3,181 @@
 An autonomous, scalable, modular AI agent system engine and interactive CLI REPL written in **TypeScript** powered by **Bun**.
 Directly ported from the multi-layer actor architecture of **OpenAI Codex Core** (`codex-rs/core`).
 
----
+## Features
 
-## 1. System Overview & Architecture
+- **Multi-agent orchestration**: Spawn and manage multiple specialized agents
+- **Git worktree isolation**: Safe task isolation with automatic branch management
+- **Skills system**: Load and execute specialized capabilities dynamically
+- **Memory bank**: Persistent user preferences and context
+- **MCP integration**: Connect to Model Context Protocol servers
+- **Interactive REPL**: Full-featured terminal interface
+- **Cross-platform**: Works on Windows, macOS, and Linux
+
+## Installation
+
+### Using Bun (recommended)
+
+```bash
+# Install Groupy globally
+bun install -g @pikaa-ai/pikaa
+
+# Or install locally
+bun install @pikaa-ai/pikaa
+```
+
+### Using npm/yarn
+
+```bash
+# Install globally
+npm install -g @pikaa-ai/pikaa
+
+# Or install locally
+npm install @pikaa-ai/pikaa
+```
+
+## Quick Start
+
+Start the interactive REPL:
+
+```bash
+groupy
+```
+
+Or run a specific command:
+
+```bash
+groupy worktrees
+groupy skills
+groupy memories
+```
+
+## System Architecture
 
 Groupy's engine is structured into modular layers that separate protocol, transport, orchestration, execution, context management, MCP integration, multi-agent spawning, persistence, skills, memories, git worktree task isolation, and the interactive CLI REPL:
 
 ```
 groupy/
-├── bin/                       # Executable CLI
+├── bin/                       # Executable CLI entry points
 ├── src/
-│   ├── index.ts               # Main package exports
-│   │
+│   ├── index.ts               # Main package exports and initialization
+│   ├── cli/                   # Command-line interface and REPL
+│   │   ├── index.ts          # Main CLI entry
+│   │   ├── repl.ts           # Interactive REPL implementation
+│   │   └── commands.ts       # CLI command handlers
 │   ├── worktree/              # Git Worktree Task Isolation
-│   │   ├── git.ts             # Low-level git execution helpers & porcelain parser
-│   │   ├── manager.ts         # WorktreeManager (lifecycle, thread binding & branch merging)
-│   │   ├── tools.ts           # LLM tools: create_worktree, list_worktrees, merge_worktree, remove_worktree
-│   │   └── types.ts           # WorktreeInfo, WorktreeOptions, WorktreeMergeResult
-│   │
-│   ├── skills/                # Skills Discovery & On-Demand Execution
-│   │   ├── loader.ts          # SkillsLoader (scans .agents/skills/ & ~/.groupy/skills/)
-│   │   ├── tool.ts            # load_skill Tool for LLM retrieval
-│   │   └── types.ts           # SkillMetadata, LoadedSkill
-│   │
-│   ├── memories/              # Persistent Memory Bank (Global & Workspace)
-│   │   ├── store.ts           # MemoryStore (reads/writes ~/.groupy/memories.md & .agents/memories.md)
-│   │   ├── tool.ts            # remember Tool for persisting learned preferences
-│   │   └── types.ts           # MemoryEntry, MemoryCategory
-│   │
-│   ├── storage/               # SQLite Thread Store & Session Persistence
-│   │   ├── sqlite-store.ts    # Native bun:sqlite WAL database store
-│   │   ├── manager.ts         # SessionPersistenceManager (auto-checkpointing & resume)
-│   │   └── types.ts           # ThreadRecord, ItemRecord, RestoredSessionData
-│   │
-│   ├── cli/                   # Interactive Terminal CLI & REPL
-│   │   ├── index.ts           # Binary entrypoint & CLI argument parser (--resume, --model, --role)
-│   │   ├── repl.ts            # Read-Eval-Print-Loop engine with live spinner & approvals
-│   │   ├── commands.ts        # Slash commands (/help, /skills, /memories, /worktrees, /sessions, /roles, /agents, /mcp, /compact, /clear)
-│   │   └── ui/
-│   │       ├── colors.ts      # Zero-dependency ANSI styling with terracotta brand palette
-│   │       ├── spinner.ts     # Live async terminal spinner (⠋ ⠙ ⠹...)
-│   │       └── formatter.ts   # Groupy key emblem banner, tool cards & clean typography
-│   │
-│   ├── protocol/              # Immutable data contracts & event schemas
-│   │   ├── ops.ts             # Operations (TurnInput, Interrupt, ExecApproval, Shutdown)
-│   │   ├── events.ts          # Real-time event streams (Reasoning, MessageDelta, ToolCall, etc.)
-│   │   ├── items.ts           # Conversation history items (User, Agent, ToolCall, ToolOutput)
-│   │   └── errors.ts          # Typed error hierarchy (TurnAborted, ContextExceeded, etc.)
-│   │
-│   ├── client/                # LLM Transport & Streaming Pipeline
-│   │   └── model-client.ts    # ModelClient & turn-scoped ModelClientSession
-│   │
-│   ├── session/               # The Heart: Orchestration & The Agent Loop
-│   │   ├── session.ts         # Session state, event bus, and active turn tracker
-│   │   ├── submission-loop.ts # Background actor loop dispatching operations
-│   │   ├── turn-input.ts      # Turn admission & steering logic (Started, Steered, Queued)
-│   │   ├── turn.ts            # runTurn() ReAct sampling, auto-compaction, memories & tool loop
-│   │   └── turn-context.ts    # Per-turn state, abort signal, and tool router snapshot
-│   │
-│   ├── mcp/                   # Model Context Protocol (MCP) Client Subsystem
-│   │   ├── types.ts           # JSON-RPC 2.0 schemas & MCP protocol specs
-│   │   ├── transport.ts       # StdioTransport (Bun.spawn) & SseTransport
-│   │   ├── client.ts          # McpClient (handshake, tools/list, tools/call, resources/read)
-│   │   └── manager.ts         # McpManager (multi-server registry & ToolRouter bridge)
-│   │
-│   ├── agents/                # Multi-Agent Sub-agent Spawner Subsystem
-│   │   ├── identity.ts        # Ed25519 cryptographic keypair, runtime IDs, and task signing
-│   │   ├── roles.ts           # AgentRoleRegistry (default, reviewer, researcher, tester, planner)
-│   │   ├── types.ts           # SubAgentHandle, SubAgentStatus, SpawnAgentParams
-│   │   ├── spawner.ts         # AgentSpawner (parallel sub-agent orchestration & lifecycle)
-│   │   └── tools.ts           # spawn_agent, wait_agent, send_input, close_agent, list_agents
-│   │
-│   ├── tools/                 # Tool Subsystem & Handlers
-│   │   ├── types.ts           # Tool definition interface & parameter schemas
-│   │   ├── router.ts          # ToolRouter for tool discovery & execution dispatch
-│   │   └── handlers/          # Built-in handlers (apply_patch, shell, file_ops, request_user_input)
-│   │
-│   ├── security/              # Guardrails & Isolation
-│   │   ├── exec-policy.ts     # Command evaluation rules (auto-approve vs prompt user)
-│   │   └── sandbox.ts         # Path isolation boundaries
-│   │
-│   └── context/               # Context Management & Compaction
-│       ├── world-state.ts     # Git branch, working directory & OS snapshot
-│       ├── instructions.ts    # Base instructions, memories injection & developer guidelines
-│       └── compactor.ts       # History token estimator & auto-compactor
-│
-└── tests/                     # Automated Test Suite (bun test)
-    ├── session-engine.test.ts     # End-to-end ReAct loop & tool execution tests
-    ├── turn-interrupt.test.ts     # Turn interruption and steering tests
-    ├── apply-patch.test.ts        # File patch surgical replacement tests
-    ├── exec-policy.test.ts        # Command approval policy tests
-    ├── compactor.test.ts          # History token compaction tests
-    ├── mcp.test.ts                # MCP Stdio transport, discovery & execution tests
-    ├── sub-agents.test.ts         # Parallel sub-agent spawning & coordination tests
-    ├── storage.test.ts            # SQLite thread persistence & resume tests
-    ├── skills-and-memories.test.ts# Skills loader & memory bank persistence tests
-    └── worktree.test.ts           # Git Worktree isolation & merge tests
+│   │   ├── git.ts            # Low-level git execution helpers & porcelain parser
+│   │   ├── manager.ts        # WorktreeManager (lifecycle, thread binding & branch merging)
+│   │   ├── tools.ts          # LLM tools: create_worktree, list_worktrees, merge_worktree, remove_worktree
+│   │   └── types.ts          # WorktreeInfo, WorktreeOpt
+│   ├── client/                # AI model clients
+│   │   ├── model-client.ts   # Base model client implementation
+│   │   └── types.ts          # Client types and interfaces
+│   ├── code-mode/             # Code execution runtime
+│   │   ├── runtime.ts        # Code execution environment
+│   │   └── types.ts          # Code execution types
+│   ├── context/               # Context management
+│   │   └── instructions.ts   # Instruction handling and context
+│   ├── protocol/              # Communication protocols
+│   │   └── events.ts         # Event definitions and messaging
+│   ├── storage/               # Persistence layer
+│   │   ├── sqlite.ts         # SQLite database implementation
+│   │   └── types.ts          # Storage types and interfaces
+│   ├── skills/                # Skills system
+│   │   ├── loader.ts         # Skills loading and discovery
+│   │   └── types.ts          # Skill types and interfaces
+│   └── ui/                   # User interface components
+│       ├── formatter.ts      # Output formatting utilities
+│       └── spinner.ts        # Loading spinner components
+├── templates/                # Template files for generated content
+├── tests/                   # Test suites
+│   ├── client.test.ts        # Model client tests
+│   ├── code-mode.test.ts     # Code execution tests
+│   ├── storage.test.ts       # SQLite thread persistence & resume tests
+│   ├── skills-and-memories.test.ts# Skills loader & memory bank persistence tests
+│   └── worktree.test.ts      # Git Worktree isolation & merge tests
+└── dist/                    # Built output
 ```
 
----
+## CLI Usage
 
-## 2. CLI Usage
+### Worktree Management
 
 ```bash
-# List active isolated Git Worktrees
-bun run src/cli/index.ts worktrees
+# List all active isolated Git Worktrees
+groupy worktrees
 
-# List available skills across project and global config
-bun run src/cli/index.ts skills
+# Create a new worktree for a task
+groupy create-worktree my-feature-branch
 
+# Merge worktree changes back to main branch
+groupy merge-worktree my-feature-branch
+
+# Remove a worktree
+groupy remove-worktree my-feature-branch
+```
+
+### Skills Management
+
+```bash
+# List all available skills
+groupy skills
+
+# Execute a specific skill
+groupy execute skill-name
+```
+
+### Memory and Preferences
+
+```bash
 # View learned user preferences and memory bank
-bun run src/cli/index.ts memories
+groupy memories
 
-# Or inside the interactive REPL:
-/worktrees
-/skills
-/memories
-/sessions
+# Clear memory
+groupy clear-memories
 ```
 
----
-
-## 3. Quickstart & Testing
-
-Run all 27 automated test suites with Bun:
+### Sessions
 
 ```bash
-cd groupy
-bun test
+# List active sessions
+groupy sessions
+
+# Resume a previous session
+groupy resume session-id
 ```
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all test suites
+bun test
+
+# Run specific test file
+bun test tests/worktree.test.ts
+
+# Run tests with coverage
+bun test --coverage
+```
+
+### Building
+
+```bash
+# Build JavaScript output
+bun run build:js
+
+# Build executable
+bun run build:exe
+
+# Build all artifacts
+bun run build
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT

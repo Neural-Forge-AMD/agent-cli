@@ -23,6 +23,8 @@ import { AuthClient, CredentialsStore } from "../auth";
 import { CliRepl } from "./repl";
 import { style } from "./ui/colors";
 import { MarkdownHighlighter } from "./ui/markdown";
+import { getCliVersion, getPackageMetadata } from "./version";
+import { handleSlashCommand } from "./commands";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -93,13 +95,15 @@ async function main(): Promise<void> {
     } else if (arg === "--mcp") {
       mcpConfigFile = args[++i];
     } else if (arg === "--version" || arg === "-v" || arg === "version") {
-      console.log(`pikaa v0.2.5`);
+      const meta = getPackageMetadata();
+      console.log(`${meta.name} v${meta.version}`);
       process.exit(0);
     } else if (arg === "--help" || arg === "-h") {
       printCliHelp();
       process.exit(0);
-    } else if (!arg?.startsWith("-") && !singlePrompt) {
-      singlePrompt = arg;
+    } else if (!arg?.startsWith("-")) {
+      singlePrompt = args.slice(i).join(" ");
+      break;
     }
   }
 
@@ -141,6 +145,7 @@ async function main(): Promise<void> {
         tools,
         skillsLoader,
         memoryStore,
+        mcpManager,
         modelClient,
       });
       console.log(style.brand(`[Resumed session: ${resumeThreadId}]`));
@@ -155,6 +160,7 @@ async function main(): Promise<void> {
       tools,
       skillsLoader,
       memoryStore,
+      mcpManager,
       modelClient,
     });
     storageManager.bindSession(session, role);
@@ -166,6 +172,32 @@ async function main(): Promise<void> {
 
   // 4. Single-shot prompt mode vs Interactive REPL
   if (singlePrompt) {
+    if (
+      singlePrompt.startsWith("/") ||
+      singlePrompt.startsWith("security") ||
+      singlePrompt.startsWith("scan") ||
+      singlePrompt.startsWith("audit") ||
+      singlePrompt.startsWith("skills") ||
+      singlePrompt.startsWith("whoami") ||
+      singlePrompt.startsWith("roles") ||
+      singlePrompt.startsWith("mcp")
+    ) {
+      const slashInput = singlePrompt.startsWith("/") ? singlePrompt : `/${singlePrompt}`;
+      const handled = await handleSlashCommand(slashInput, {
+        session,
+        spawner,
+        mcpManager,
+        storageManager,
+        skillsLoader,
+        memoryStore,
+        worktreeManager,
+      });
+      if (handled) {
+        await mcpManager.closeAll();
+        process.exit(0);
+      }
+    }
+
     console.log(style.dim(`[Groupy single-shot execution for: "${singlePrompt}"]\n`));
     const highlighter = new MarkdownHighlighter();
     session.onEvent((event) => {
@@ -184,8 +216,10 @@ async function main(): Promise<void> {
       await session.prompt(singlePrompt);
     } catch (err) {
       console.error(style.red(`\nExecution failed: ${err instanceof Error ? err.message : String(err)}`));
+      await mcpManager.closeAll();
       process.exit(1);
     }
+    await mcpManager.closeAll();
     console.log();
     process.exit(0);
   }
@@ -202,6 +236,8 @@ async function main(): Promise<void> {
     role,
   });
   await repl.start();
+  await repl.close();
+  process.exit(0);
 }
 
 async function handleLogin(authClient: AuthClient, backendUrl?: string): Promise<void> {

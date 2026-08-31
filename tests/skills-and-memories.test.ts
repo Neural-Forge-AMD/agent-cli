@@ -65,7 +65,7 @@ description: "Step by step production deployment checklist."
       "utf8"
     );
 
-    const loader = new SkillsLoader({ customRoots: [testTmpDir], includeGlobal: false });
+    const loader = new SkillsLoader({ customRoots: [testTmpDir], includeGlobal: false, includeBuiltIn: false });
     const skills = loader.listSkills(testTmpDir);
 
     expect(skills.length).toBe(1);
@@ -75,6 +75,42 @@ description: "Step by step production deployment checklist."
     const loaded = loader.loadSkill(testTmpDir, "deploy-guide");
     expect(loaded).not.toBeNull();
     expect(loaded?.instructions).toContain("Run `bun test`");
+  });
+
+  test("SkillsLoader discovers built-in skills (ponytail, tdd, systematic-debugging)", () => {
+    const loader = new SkillsLoader({ includeGlobal: false, includeBuiltIn: true });
+    const skills = loader.listSkills(process.cwd());
+
+    const names = skills.map((s) => s.name);
+    expect(names).toContain("ponytail");
+    expect(names).toContain("tdd");
+    expect(names).toContain("systematic-debugging");
+    expect(names).toContain("verification-before-completion");
+
+    const loaded = loader.loadSkill(process.cwd(), "ponytail");
+    expect(loaded).not.toBeNull();
+    expect(loaded?.instructions).toContain("7-Step Engineering Ladder");
+  });
+
+  test("SkillsLoader supports disabling and re-enabling skills", () => {
+    const loader = new SkillsLoader({ includeGlobal: false, includeBuiltIn: true });
+    
+    expect(loader.isSkillDisabled("ponytail")).toBe(false);
+    
+    // 1. Disable skill
+    loader.disableSkill("ponytail");
+    expect(loader.isSkillDisabled("ponytail")).toBe(true);
+
+    const activeSkills = loader.listSkills(process.cwd(), { includeDisabled: false });
+    expect(activeSkills.map((s) => s.name)).not.toContain("ponytail");
+
+    // When disabled, loadSkill returns null
+    expect(loader.loadSkill(process.cwd(), "ponytail")).toBeNull();
+
+    // 2. Re-enable skill
+    loader.enableSkill("ponytail");
+    expect(loader.isSkillDisabled("ponytail")).toBe(false);
+    expect(loader.loadSkill(process.cwd(), "ponytail")).not.toBeNull();
   });
 
   test("load_skill tool returns full skill instructions through ToolRouter", async () => {
@@ -93,7 +129,7 @@ Always use JWT with HTTP-only cookies.
       "utf8"
     );
 
-    const loader = new SkillsLoader({ customRoots: [testTmpDir], includeGlobal: false });
+    const loader = new SkillsLoader({ customRoots: [testTmpDir], includeGlobal: false, includeBuiltIn: false });
     const router = new ToolRouter();
     router.register(createSkillTool(loader));
 

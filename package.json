@@ -13,6 +13,9 @@
   "files": [
     "dist",
     "bin",
+    "templates",
+    "assets",
+    "skills",
     "README.md",
     "LICENSE"
   ],

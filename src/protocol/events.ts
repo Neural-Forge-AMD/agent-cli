@@ -6,6 +6,11 @@ import type { ConversationItem } from "./items";
 
 export type SessionStatus = "idle" | "running" | "waiting_approval" | "waiting_user_input" | "interrupted" | "terminated";
 
+export interface PlanItem {
+  step: string;
+  status: "pending" | "in_progress" | "completed";
+}
+
 export type EventMsg =
   | {
       type: "SessionConfigured";
@@ -63,6 +68,12 @@ export type EventMsg =
       turnId: string;
       question: string;
       options?: string[];
+    }
+  | {
+      type: "PlanUpdated";
+      turnId: string;
+      explanation?: string;
+      plan: PlanItem[];
     }
   | {
       type: "ToolCallStarted";

@@ -1,13 +1,20 @@
-/**
- * CLI Formatter: High-fidelity ANSI rendering of the Groupy Emblem and clean typography.
- */
-
 import { c, style } from "./colors";
 import { parsePatch, renderDiff } from "./diff";
 import { formatDuration } from "./spinner";
+import type { PlanItem } from "../../protocol/events";
+import { BannerAnimator, type BannerInfo, type BannerAnimationOptions } from "./animation/banner-animation";
+import { getCliVersion } from "../version";
 
-export function renderGroupyBanner(info: { model: string; cwd: string; user?: string; role?: string }): void {
-  CliFormatter.printBanner(info);
+export function renderGroupyBanner(info: BannerInfo, options?: BannerAnimationOptions): void {
+  BannerAnimator.renderStatic(info);
+}
+
+export async function renderAnimatedGroupyBanner(info: BannerInfo, options?: BannerAnimationOptions): Promise<void> {
+  await BannerAnimator.play(info, options);
+}
+
+export function formatTaskProgressPlan(plan: PlanItem[], explanation?: string): void {
+  CliFormatter.formatTaskProgressPlan(plan, explanation);
 }
 
 export interface TurnSummaryMetrics {
@@ -94,18 +101,19 @@ export function formatToolCard(toolName: string, args: Record<string, unknown>, 
 }
 
 export class CliFormatter {
-  static printBanner(info: { model: string; cwd: string; user?: string; role?: string }): void {
+  static printBanner(info: { model: string; cwd: string; user?: string; role?: string; version?: string }): void {
     const b = c.brandBold;
     const r = c.reset;
     const g = c.dim;
     const t = c.bold;
 
     const userDisplay = info.user ? style.cyan(info.user) : style.dim("Guest");
+    const version = info.version || getCliVersion({ prefix: true });
 
     console.log();
     console.log(`  ${b}       ▄▄████████▄▄${r}`);
     console.log(`  ${b}    ▄███▀▀      ▀▀███▄${r}`);
-    console.log(`  ${b}  ▄██▀              ▀██▄${r}           ${t}PIKAA AGENT${r}`);
+    console.log(`  ${b}  ▄██▀              ▀██▄${r}           ${t}PIKAA AGENT${r} ${style.dim(version)}`);
     console.log(`  ${b} ███    ▄▄████▄▄      ███${r}          ${g}Autonomous Coding Engine${r}`);
     console.log(`  ${b}███   ▄██▀    ▀██▄     ▀▀${r}          ${style.dim("User:")}  ${userDisplay}`);
     console.log(`  ${b}███   ██▌  ██  ▐██████████████▄${r}    ${style.dim("Model:")} ${style.brand(info.model)}`);
@@ -118,6 +126,78 @@ export class CliFormatter {
     console.log();
     console.log(`  ${style.dim("Type /help for slash commands or /exit to quit.")}`);
     console.log();
+  }
+
+  static printUpdateNotice(update: { currentVersion: string; latestVersion: string; packageName?: string }): void {
+    const pkg = update.packageName || "@pikaa-ai/pikaa";
+    const cur = update.currentVersion.startsWith("v") ? update.currentVersion : `v${update.currentVersion}`;
+    const lat = update.latestVersion.startsWith("v") ? update.latestVersion : `v${update.latestVersion}`;
+
+    const innerWidth = 54;
+    const padLine = (content: string) => {
+      const visibleLen = style.stripAnsi(content).length;
+      const padRight = Math.max(0, innerWidth - visibleLen);
+      return `  ${style.yellow("│")}  ${content}${" ".repeat(padRight)}${style.yellow("│")}`;
+    };
+
+    const topBorder = `  ${style.yellow("╭")}${style.yellow("─".repeat(innerWidth + 2))}${style.yellow("╮")}`;
+    const bottomBorder = `  ${style.yellow("╰")}${style.yellow("─".repeat(innerWidth + 2))}${style.yellow("╯")}`;
+
+    console.log(topBorder);
+    console.log(padLine(`Update available: ${style.dim(cur)} → ${style.green(style.bold(lat))}`));
+    console.log(padLine(`${style.dim("Run to update:")}`));
+    console.log(padLine(`  ${style.cyan(`bun add -g ${pkg}`)}`));
+    console.log(padLine(`  ${style.dim("or:")} ${style.dim(`npm i -g ${pkg}`)}`));
+    console.log(bottomBorder);
+    console.log();
+  }
+
+  static printSecurityReport(report: {
+    scannedFiles: number;
+    findings: Array<{
+      id: string;
+      category: string;
+      severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+      filePath: string;
+      lineNumber: number;
+      snippet: string;
+      description: string;
+      recommendation: string;
+    }>;
+    durationMs: number;
+    summary: { critical: number; high: number; medium: number; low: number };
+  }): void {
+    console.log();
+    console.log(`  ${style.brandBold("🛡️  Codebase Security & Vulnerability Assessment (Strix)")}`);
+    console.log(`  ${style.dim(`Scanned ${report.scannedFiles} files in ${(report.durationMs).toFixed(1)}ms`)}`);
+    console.log();
+
+    if (report.findings.length === 0) {
+      console.log(`  ${style.green("✓ No critical vulnerabilities or exposed secrets detected.")}\n`);
+      return;
+    }
+
+    const { critical, high, medium, low } = report.summary;
+    const stats: string[] = [];
+    if (critical > 0) stats.push(style.red(`${critical} CRITICAL`));
+    if (high > 0) stats.push(style.yellow(`${high} HIGH`));
+    if (medium > 0) stats.push(style.cyan(`${medium} MEDIUM`));
+    if (low > 0) stats.push(style.dim(`${low} LOW`));
+
+    console.log(`  ${style.bold("Findings Summary:")} ${stats.join(style.dim(" · "))}`);
+    console.log(`  ${style.dim("─".repeat(64))}`);
+
+    for (let i = 0; i < report.findings.length; i++) {
+      const f = report.findings[i]!;
+      const sevColor = f.severity === "CRITICAL" ? style.red : f.severity === "HIGH" ? style.yellow : style.cyan;
+      console.log(`\n  [${style.bold(String(i + 1))}] [${sevColor(f.severity)}] ${style.bold(f.category)}: ${f.description}`);
+      console.log(`      ${style.dim("Location:")} ${style.cyan(f.filePath)}:${style.yellow(String(f.lineNumber))}`);
+      console.log(`      ${style.dim("Snippet:")}  ${style.dim(f.snippet)}`);
+      console.log(`      ${style.green("Remedy:")}   ${f.recommendation}`);
+    }
+
+    console.log(`\n  ${style.dim("─".repeat(64))}`);
+    console.log(`  ${style.dim("To auto-fix these issues, run:")} ${style.cyan("@spawn security-auditor \"Fix all identified vulnerabilities\"")}\n`);
   }
 
   static formatToolCall(toolName: string, args: Record<string, unknown>): void {
@@ -220,5 +300,108 @@ export class CliFormatter {
     // Highlight markdown headings # Header
     formatted = formatted.replace(/^(#{1,3})\s+(.*)$/gm, `${c.bold}${c.brand}$1 $2${c.reset}`);
     return formatted;
+  }
+
+  static formatTaskProgressPlan(plan: PlanItem[], explanation?: string): void {
+    console.log();
+    const title = explanation ? ` Task Progress: ${explanation} ` : " Task Progress Plan ";
+    const headerLine = `  ┌──${style.brand(title)}${"─".repeat(Math.max(0, 50 - title.length))}`;
+    console.log(headerLine);
+
+    for (let i = 0; i < plan.length; i++) {
+      const item = plan[i];
+      if (!item) continue;
+      let icon = style.dim("[ ]");
+      let text = style.dim(item.step);
+
+      if (item.status === "completed") {
+        icon = style.green("[✓]");
+        text = style.bold(item.step);
+      } else if (item.status === "in_progress") {
+        icon = style.cyan("[⏳]");
+        text = style.cyan(item.step);
+      }
+
+      console.log(`  │  ${icon} ${i + 1}. ${text}`);
+    }
+
+    console.log(`  └──${"─".repeat(50)}\n`);
+  }
+
+  static printMcpServers(
+    servers: Array<{
+      name: string;
+      connected: boolean;
+      serverInfo?: { name?: string; version?: string };
+      toolsCount: number;
+      resourcesCount: number;
+      promptsCount: number;
+    }>,
+    configFiles: string[] = []
+  ): void {
+    console.log();
+    console.log(style.bold("  🔌 Model Context Protocol (MCP) Servers:"));
+    if (configFiles.length > 0) {
+      console.log(`  ${style.dim("Loaded configs:")} ${style.dim(configFiles.join(", "))}`);
+    }
+    console.log(`  ${style.dim("─".repeat(64))}`);
+
+    if (servers.length === 0) {
+      console.log(`  ${style.dim("No active MCP servers connected.")}`);
+      console.log(`  ${style.dim("To add an MCP server, run:")} ${style.cyan("/mcp add <name> <command> [args...]")}`);
+      console.log(`  ${style.dim("Example:")} ${style.cyan("/mcp add sqlite npx -y @modelcontextprotocol/server-sqlite /path/to/db.sqlite")}\n`);
+      return;
+    }
+
+    for (const s of servers) {
+      const statusIcon = s.connected ? style.green("● Online") : style.red("○ Disconnected");
+      const info = s.serverInfo ? ` (${s.serverInfo.name || ""} v${s.serverInfo.version || "1.0"})` : "";
+      console.log(`\n    • ${style.bold(s.name)}${style.dim(info)} — [${statusIcon}]`);
+      console.log(
+        `      ${style.dim("Capabilities:")} ${style.cyan(`${s.toolsCount} tools`)} ${style.dim("·")} ${style.cyan(`${s.resourcesCount} resources`)} ${style.dim("·")} ${style.cyan(`${s.promptsCount} prompts`)}`
+      );
+    }
+
+    console.log(`\n  ${style.dim("─".repeat(64))}`);
+    console.log(`  ${style.dim("Commands:")} ${style.cyan("/mcp tools [server]")} ${style.dim("·")} ${style.cyan("/mcp test <server>")} ${style.dim("·")} ${style.cyan("/mcp add <name> <cmd>")}\n`);
+  }
+
+  static printMcpTools(serverName: string, tools: Array<{ name: string; description?: string; inputSchema?: any }>): void {
+    console.log();
+    console.log(style.bold(`  🛠️  MCP Tools for [${style.cyan(serverName)}] (${tools.length} tools):`));
+    console.log(`  ${style.dim("─".repeat(64))}`);
+
+    if (tools.length === 0) {
+      console.log(`  ${style.dim("No tools exposed by this server.")}\n`);
+      return;
+    }
+
+    for (const t of tools) {
+      console.log(`    • ${style.cyan(t.name)}: ${t.description || style.dim("No description")}`);
+      const props = t.inputSchema?.properties ? Object.keys(t.inputSchema.properties) : [];
+      const req = new Set(t.inputSchema?.required || []);
+      if (props.length > 0) {
+        const paramList = props.map((p) => (req.has(p) ? style.yellow(`${p}*`) : style.dim(p))).join(", ");
+        console.log(`      ${style.dim("Params:")} ${paramList}`);
+      }
+    }
+    console.log();
+  }
+
+  static printMcpResources(serverName: string, resources: Array<{ uri: string; name?: string; description?: string; mimeType?: string }>): void {
+    console.log();
+    console.log(style.bold(`  📦 MCP Resources for [${style.cyan(serverName)}] (${resources.length} resources):`));
+    console.log(`  ${style.dim("─".repeat(64))}`);
+
+    if (resources.length === 0) {
+      console.log(`  ${style.dim("No resources exposed by this server.")}\n`);
+      return;
+    }
+
+    for (const r of resources) {
+      const label = r.name || r.description ? ` (${r.name || r.description})` : "";
+      console.log(`    • ${style.cyan(r.uri)}${style.dim(label)} ${r.mimeType ? style.dim(`[${r.mimeType}]`) : ""}`);
+    }
+    console.log();
   }
 }

@@ -72,6 +72,36 @@ export class AgentRoleRegistry {
       nicknameCandidates: ["Blueprint", "Architect", "Strategist"],
       allowedToolNames: ["read_file", "list_dir"],
     });
+
+    // 6. Security Auditor / Penetration Tester (Strix)
+    this.registerRole({
+      name: "security-auditor",
+      description: "Autonomous security auditing & penetration testing agent for vulnerability discovery, threat modeling, and defensive remediation.",
+      systemPrompt:
+        "You are an Elite Security Auditor and Penetration Testing Specialist (inspired by Strix). Your mission is to defensively map attack surfaces, discover security vulnerabilities (OWASP Top 10, secrets leakage, auth bypass, input boundary flaws), and produce safe, verified remediation patches.",
+      nicknameCandidates: ["Aegis", "Strix", "Warden", "Sentinel", "Guardian"],
+      allowedToolNames: ["read_file", "list_dir", "shell", "apply_patch", "write_file"],
+    });
+
+    // 7. Frontend Designer & UI Engineer (Claude Code frontend-design)
+    this.registerRole({
+      name: "frontend-designer",
+      description: "Autonomous frontend designer-engineer specializing in high-craft, distinctive UI design systems, avoiding generic AI templates.",
+      systemPrompt:
+        "You are an Elite Frontend Designer-Engineer (Claude Code frontend-design). You craft distinctive, production-grade user interfaces with intentional aesthetic direction, strong typographic hierarchy, bespoke color stories, and purposeful micro-interactions without generic AI UI slop.",
+      nicknameCandidates: ["Artisan", "Pixel", "Canvas", "Palette", "Studio"],
+      allowedToolNames: ["read_file", "list_dir", "shell", "apply_patch", "write_file"],
+    });
+
+    // 8. Scientific Computing, Bioinformatics & Data Science Specialist
+    this.registerRole({
+      name: "scientist",
+      description: "Autonomous scientific computing, bioinformatics, quantum mechanics, chemistry, and ML agent equipped with scientific domain skills.",
+      systemPrompt:
+        "You are a Senior Computational Research Scientist. You leverage specialized scientific skills (e.g. biopython, rdkit, qiskit, astropy, scanpy, sympy, scikit-learn, deepchem) to execute rigorous scientific modeling, data analysis, and domain-specific code execution.",
+      nicknameCandidates: ["Newton", "Curie", "Turing", "Euler", "Galileo", "Darwin"],
+      allowedToolNames: ["read_file", "list_dir", "shell", "apply_patch", "write_file", "load_skill"],
+    });
   }
 
   registerRole(role: AgentRole): void {

@@ -1,59 +1,145 @@
 /**
  * System Instructions Builder.
- * Combines base system prompts, tool usage instructions, persistent memories,
- * available skills catalog, and developer guidelines.
+ * Combines modular Markdown templates (base model prompt, modes, permissions, personality, orchestrator),
+ * hierarchical AGENTS.md, persistent memories, available skills catalog, and developer guidelines.
+ * 
+ * Directly mirrors OpenAI Codex prompt assembly architecture.
  */
+
+import { globalPromptLoader } from "../prompts/loader";
+import { globalAgentsMdLoader } from "../prompts/agents-md";
+import type {
+  CollaborationModeKind,
+  SandboxModePromptKind,
+  ApprovalPolicyPromptKind,
+  PersonalityKind,
+} from "../prompts/types";
 
 export interface InstructionParams {
   basePrompt?: string;
+  basePromptTemplate?: string;
   developerInstructions?: string;
   worldStatePrompt?: string;
   memoriesPrompt?: string;
   skillsPrompt?: string;
+  mcpPrompt?: string;
+  collaborationMode?: CollaborationModeKind;
+  personality?: PersonalityKind;
+  isOrchestrator?: boolean;
+  cwd?: string;
+  networkAccess?: boolean;
+  sandboxMode?: SandboxModePromptKind;
+  approvalPolicy?: ApprovalPolicyPromptKind;
 }
 
 export function buildSystemPrompt(params: InstructionParams): string {
   const sections: string[] = [];
+  const cwd = params.cwd || process.cwd();
+  const mode = params.collaborationMode || "default";
 
-  // 1. Base identity
-  sections.push(
-    params.basePrompt ||
-      "You are Groupy, an expert autonomous AI coding assistant. You think step-by-step, act surgically, and write clean, correct code."
+  // 1. Base identity & model guidelines
+  if (params.basePrompt) {
+    sections.push(params.basePrompt);
+  } else {
+    const templateName = params.basePromptTemplate || "base/groupy_prompt.md";
+    const baseContent = globalPromptLoader.loadTemplate(templateName, {}, cwd);
+    if (baseContent) {
+      sections.push(baseContent.trim());
+    } else {
+      sections.push(
+        "You are Groupy, an expert autonomous AI coding assistant. You think step-by-step, act surgically, and write clean, correct code."
+      );
+    }
+  }
+
+  // 2. Personality / Interaction style (if configured)
+  if (params.personality) {
+    const personalityContent = globalPromptLoader.loadTemplate(
+      `personalities/${params.personality}.md`,
+      {},
+      cwd
+    );
+    if (personalityContent) {
+      sections.push(personalityContent.trim());
+    }
+  }
+
+  // 3. Multi-Agent Orchestrator guidelines (if running as root orchestrator)
+  if (params.isOrchestrator) {
+    const orchestratorContent = globalPromptLoader.loadTemplate(
+      "agents/orchestrator.md",
+      {},
+      cwd
+    );
+    if (orchestratorContent) {
+      sections.push(orchestratorContent.trim());
+    }
+  }
+
+  // 4. Active Collaboration Mode Template (modes/default.md, modes/plan.md, modes/review.md)
+  const modeTemplate = globalPromptLoader.loadTemplate(
+    `modes/${mode}.md`,
+    {
+      KNOWN_MODE_NAMES: "default, plan, review",
+    },
+    cwd
   );
+  if (modeTemplate) {
+    sections.push(modeTemplate.trim());
+  }
 
-  // 2. General agentic guidelines directly adapted from OpenAI Codex
-  sections.push(
-    [
-      "## Editing Constraints & Guidelines",
-      "- Use `apply_patch` for surgical single-file edits. TargetContent must match existing file content exactly.",
-      "- Use `write_file` for creating new files or when completely replacing the full content of a file.",
-      "- Use `read_file` to inspect files and `grep_search` / `find_files` to discover symbols and locate files across the project.",
-      "- NEVER create temporary scripts, scratch files, or chunk files (e.g. `_tmp_*.ps1`, `_tmp_*.txt`, `split_*.py`) in the workspace to manipulate, split, or read files.",
-      "- NEVER execute shell or PowerShell scripts as a workaround for reading, writing, or editing text files.",
-      "- Use the `shell` tool ONLY for running tests, build targets, package installations, or checking environment/git status.",
-      "- When user requirements are ambiguous or require architectural decisions, use `request_user_input` or `ask_question` to present 2-4 clear options. Prefix your recommended choice with `(Recommended)` (e.g. `['(Recommended) Option A', 'Option B']`).",
-      "- You may be in a dirty git worktree. NEVER revert existing changes made by the user.",
-      "- NEVER use destructive commands like `git reset --hard` or `git checkout --`.",
-      "- Be concise, direct, and act surgically. Write clean, correct code with minimal necessary modifications.",
-    ].join("\n")
-  );
+  // 5. Permissions & Sandboxing Template (if configured)
+  if (params.sandboxMode) {
+    const sandboxTemplate = globalPromptLoader.loadTemplate(
+      `permissions/sandbox_mode/${params.sandboxMode}.md`,
+      {
+        network_access: params.networkAccess ? "enabled" : "disabled",
+      },
+      cwd
+    );
+    if (sandboxTemplate) {
+      sections.push(sandboxTemplate.trim());
+    }
+  }
 
-  // 3. Persistent User Memories & Preferences (if any)
+  if (params.approvalPolicy) {
+    const approvalTemplate = globalPromptLoader.loadTemplate(
+      `permissions/approval_policy/${params.approvalPolicy}.md`,
+      {},
+      cwd
+    );
+    if (approvalTemplate) {
+      sections.push(approvalTemplate.trim());
+    }
+  }
+
+  // 6. Hierarchical AGENTS.md instructions (from .git root to cwd)
+  const projectInstructions = globalAgentsMdLoader.loadProjectInstructions(cwd);
+  if (projectInstructions) {
+    sections.push(`## Project Instructions (AGENTS.md)\n\n${projectInstructions.content.trim()}`);
+  }
+
+  // 7. Persistent User Memories & Preferences (if any)
   if (params.memoriesPrompt) {
     sections.push(params.memoriesPrompt.trim());
   }
 
-  // 4. Available Domain Skills (if any)
+  // 8. Available Domain Skills (if any)
   if (params.skillsPrompt) {
     sections.push(params.skillsPrompt.trim());
   }
 
-  // 5. Developer specific instructions
+  // 9. Model Context Protocol (MCP) Servers catalog (Lazy & Eager)
+  if (params.mcpPrompt) {
+    sections.push(params.mcpPrompt.trim());
+  }
+
+  // 10. Developer specific instructions
   if (params.developerInstructions) {
     sections.push(`## Developer Instructions\n${params.developerInstructions}`);
   }
 
-  // 6. World state / environment snapshot
+  // 10. World state / environment snapshot
   if (params.worldStatePrompt) {
     sections.push(`## Environment Context\n${params.worldStatePrompt}`);
   }

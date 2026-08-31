@@ -16,6 +16,7 @@ import { handleTurnInput } from "./turn-input";
 
 import type { SkillsLoader } from "../skills/loader";
 import type { MemoryStore } from "../memories/store";
+import type { McpManager } from "../mcp/manager";
 import { ExecPolicy } from "../security/exec-policy";
 
 export interface SessionOptions {
@@ -28,7 +29,9 @@ export interface SessionOptions {
   initialHistory?: ConversationItem[];
   skillsLoader?: SkillsLoader;
   memoryStore?: MemoryStore;
+  mcpManager?: McpManager;
   execPolicy?: ExecPolicy;
+  collaborationMode?: "default" | "plan" | "review";
   onEvent?: (event: Event) => void;
 }
 
@@ -41,7 +44,9 @@ export class Session {
   public readonly tools: ToolRouter;
   public readonly skillsLoader?: SkillsLoader;
   public readonly memoryStore?: MemoryStore;
+  public readonly mcpManager?: McpManager;
   public readonly execPolicy: ExecPolicy;
+  public collaborationMode: "default" | "plan" | "review" = "default";
 
   private history: ConversationItem[] = [];
   private activeTurn: TurnContext | null = null;
@@ -59,14 +64,14 @@ export class Session {
     this.threadId = options.threadId || `thread_${Date.now()}`;
     this.model = options.model || "gpt-4o";
     this.cwd = options.cwd || process.cwd();
-    this.systemPrompt =
-      options.systemPrompt ||
-      "You are Groupy, an expert autonomous AI coding assistant. You think critically, use tools precisely, and write clean, correct code.";
+    this.systemPrompt = options.systemPrompt || "";
     this.modelClient = options.modelClient || new ModelClient();
     this.tools = options.tools || new ToolRouter();
     this.skillsLoader = options.skillsLoader;
     this.memoryStore = options.memoryStore;
+    this.mcpManager = options.mcpManager;
     this.execPolicy = options.execPolicy || new ExecPolicy();
+    this.collaborationMode = options.collaborationMode || "default";
     this.history = options.initialHistory ? [...options.initialHistory] : [];
 
     if (options.onEvent) {

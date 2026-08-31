@@ -1,0 +1,1 @@
+Filesystem sandboxing defines which files can be read or written. `sandbox_mode` is `read-only`: The sandbox permits reading files, but no editing of any files is permitted. Network access is {{ network_access }}.

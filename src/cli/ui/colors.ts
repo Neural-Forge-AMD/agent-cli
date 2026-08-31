@@ -56,4 +56,5 @@ export const style = {
   gray: (t: string) => `${c.gray}${t}${c.reset}`,
   badge: (label: string, color = c.bgBrand + c.white) =>
     ` ${color}${c.bold} ${label} ${c.reset} `,
+  stripAnsi: (t: string) => t.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ""),
 };

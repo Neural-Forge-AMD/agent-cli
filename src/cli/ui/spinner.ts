@@ -1,8 +1,55 @@
 /**
- * Live Terminal Spinner with smooth async animation.
+ * Live Terminal Spinner with smooth multi-variant animations & sine-wave shimmer.
+ * Directly mirrors codex-rs/tui/src/status_indicator_widget.rs & motion.rs.
  */
 
 import { c, style } from "./colors";
+import { shimmerText } from "./shimmer";
+
+export type SpinnerVariant =
+  | "braille"
+  | "rotating_blocks"
+  | "orbit_dots"
+  | "pulse_globe"
+  | "sine_dots"
+  | "triangles"
+  | "block_pulse";
+
+export interface SpinnerConfig {
+  frames: string[];
+  intervalMs: number;
+}
+
+export const SPINNER_VARIANTS: Record<SpinnerVariant, SpinnerConfig> = {
+  braille: {
+    frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+    intervalMs: 80,
+  },
+  rotating_blocks: {
+    frames: ["▖", "▘", "▝", "▗"],
+    intervalMs: 100,
+  },
+  orbit_dots: {
+    frames: ["⠋", "⠓", "⠚", "⠖", "⠦", "⠴", "⠲", "⠪", "⠡", "⠙"],
+    intervalMs: 70,
+  },
+  pulse_globe: {
+    frames: ["◐", "◓", "◑", "◒"],
+    intervalMs: 120,
+  },
+  sine_dots: {
+    frames: ["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"],
+    intervalMs: 80,
+  },
+  triangles: {
+    frames: ["◢", "◣", "◤", "◥"],
+    intervalMs: 90,
+  },
+  block_pulse: {
+    frames: ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "▊", "▋", "▌", "▍", "▎"],
+    intervalMs: 70,
+  },
+};
 
 export function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -20,13 +67,55 @@ export function formatDuration(ms: number): string {
   return `${hours}h ${remMinutes}m ${seconds}s`;
 }
 
+export interface LiveSpinnerOptions {
+  variant?: SpinnerVariant;
+  enableShimmer?: boolean;
+  colorFn?: (frame: string) => string;
+}
+
 export class LiveSpinner {
-  private frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  private variant: SpinnerVariant = "braille";
+  private frames: string[] = SPINNER_VARIANTS.braille.frames;
+  private intervalMs: number = SPINNER_VARIANTS.braille.intervalMs;
   private frameIndex = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private currentMessage = "";
   private isSpinning = false;
   private startTime = 0;
+  private enableShimmer: boolean = true;
+  private colorFn: (frame: string) => string = (f) => `${c.cyan}${f}${c.reset}`;
+
+  constructor(options: LiveSpinnerOptions = {}) {
+    if (options.variant && SPINNER_VARIANTS[options.variant]) {
+      this.setVariant(options.variant);
+    }
+    if (options.enableShimmer !== undefined) {
+      this.enableShimmer = options.enableShimmer;
+    }
+    if (options.colorFn) {
+      this.colorFn = options.colorFn;
+    }
+  }
+
+  public setVariant(variant: SpinnerVariant): void {
+    const config = SPINNER_VARIANTS[variant] || SPINNER_VARIANTS.braille;
+    this.variant = variant;
+    this.frames = config.frames;
+    this.intervalMs = config.intervalMs;
+    this.frameIndex = 0;
+
+    if (this.isSpinning) {
+      this.restartTimer();
+    }
+  }
+
+  public getVariant(): SpinnerVariant {
+    return this.variant;
+  }
+
+  public setShimmer(enabled: boolean): void {
+    this.enableShimmer = enabled;
+  }
 
   start(message = "Thinking..."): void {
     if (this.isSpinning) {
@@ -41,11 +130,17 @@ export class LiveSpinner {
 
     // Render immediately
     this.render();
+    this.restartTimer();
+  }
 
+  private restartTimer(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
     this.timer = setInterval(() => {
       this.frameIndex = (this.frameIndex + 1) % this.frames.length;
       this.render();
-    }, 80);
+    }, this.intervalMs);
   }
 
   update(message: string): void {
@@ -60,11 +155,16 @@ export class LiveSpinner {
   }
 
   private render(): void {
-    const frame = this.frames[this.frameIndex];
+    const frame = this.frames[this.frameIndex] || "⠋";
     const elapsedMs = performance.now() - this.startTime;
     const elapsedStr = formatDuration(elapsedMs);
     const timeBadge = style.dim(`(${elapsedStr})`);
-    const output = `\r\x1b[K  ${c.cyan}${frame}${c.reset} ${c.dim}${this.currentMessage}${c.reset} ${timeBadge}`;
+
+    const animatedMsg = this.enableShimmer
+      ? shimmerText(this.currentMessage, { sweepSeconds: 2.5 })
+      : `${c.dim}${this.currentMessage}${c.reset}`;
+
+    const output = `\r\x1b[K  ${this.colorFn(frame)} ${animatedMsg} ${timeBadge}`;
     process.stdout.write(output);
   }
 

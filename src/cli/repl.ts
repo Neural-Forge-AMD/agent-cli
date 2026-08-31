@@ -9,15 +9,19 @@ import { c, style } from "./ui/colors";
 import { LiveSpinner } from "./ui/spinner";
 import {
   renderGroupyBanner,
+  renderAnimatedGroupyBanner,
   formatToolCard,
   formatTurnSummary,
   formatTaskStepStart,
   formatTaskStepFinish,
+  formatTaskProgressPlan,
+  CliFormatter,
 } from "./ui/formatter";
 import { handleSlashCommand, AVAILABLE_SLASH_COMMANDS } from "./commands";
 import { InteractiveLineEditor } from "./ui/line-editor";
 import { promptToolApproval, promptUserQuestion } from "./ui/prompt";
 import { MarkdownHighlighter } from "./ui/markdown";
+import { checkForUpdates } from "./update-checker";
 import { CredentialsStore } from "../auth/store";
 import type { Session } from "../session/session";
 import type { AgentSpawner } from "../agents/spawner";
@@ -176,6 +180,12 @@ export class CliRepl {
           await this.handleInteractiveUserQuestion(msg as any);
           break;
 
+        case "PlanUpdated":
+          this.spinner.stop();
+          formatTaskProgressPlan(msg.plan, msg.explanation);
+          this.spinner.start("Executing next step...");
+          break;
+
         case "TurnCompleted":
           if (this.reasoningStarted) {
             console.log(style.dim("\n  └─────────────────────────────────────────────────────────\n"));
@@ -284,12 +294,19 @@ export class CliRepl {
     const creds = new CredentialsStore().load();
     const accountUser = creds?.user?.username || creds?.user?.email || (creds?.accessToken ? "Authenticated" : undefined);
 
-    renderGroupyBanner({
+    await renderAnimatedGroupyBanner({
       user: accountUser,
       role: this.role,
       model: this.session.model,
       cwd: this.session.cwd,
     });
+
+    // Check for new version releases non-blockingly
+    checkForUpdates().then((update) => {
+      if (update?.updateAvailable) {
+        CliFormatter.printUpdateNotice(update);
+      }
+    }).catch(() => {});
 
     const editor = new InteractiveLineEditor({
       cwd: this.session.cwd,
@@ -358,6 +375,20 @@ export class CliRepl {
       } catch (err) {
         console.error(style.red(`Failed to submit turn: ${err instanceof Error ? err.message : String(err)}\n`));
       }
+    }
+
+    await this.close();
+  }
+
+  async close(): Promise<void> {
+    if (this.isClosed) return;
+    this.isClosed = true;
+    this.spinner.stop();
+
+    if (this.mcpManager) {
+      try {
+        await this.mcpManager.closeAll();
+      } catch {}
     }
   }
 }

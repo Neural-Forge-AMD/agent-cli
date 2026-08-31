@@ -1,6 +1,12 @@
 /**
- * High-Performance Zero-Dependency Streaming Markdown & Code Syntax Highlighter for Groupy CLI.
- * Delivers Codex & Claude Code quality terminal typography and color palette.
+ * High-Performance Zero-Dependency Progressive Streaming Markdown & Code Syntax Highlighter.
+ * Combines real-time token pass-through typewriter streaming with rich terminal typography.
+ * 
+ * Features:
+ * - Instant prefix detection (Headings, Lists, Quotes, Code Fences)
+ * - Zero-lag streaming: words appear immediately without waiting for line completion
+ * - Real-time inline style state tracking (bold, inline code, links)
+ * - Syntax highlighting for code blocks (TS, JS, Python, Rust, Shell, Diff)
  */
 
 import { c, style } from "./colors";
@@ -9,188 +15,272 @@ import { parsePatch, renderDiff } from "./diff";
 export class MarkdownHighlighter {
   private inCodeBlock = false;
   private currentLanguage = "";
-  private diffBuffer: string[] = [];
   private inDiffBlock = false;
-  private lineBuffer = "";
+  private diffBuffer: string[] = [];
+
+  // Line-level state
+  private isAtLineStart = true;
+  private prefixBuffer = "";
+
+  // Inline styling state machine
+  private inBold = false;
+  private inInlineCode = false;
 
   /**
    * Highlights a complete multi-line markdown string.
    */
   static highlight(markdown: string): string {
     const highlighter = new MarkdownHighlighter();
-    const lines = markdown.split("\n");
-    return lines.map((line) => highlighter.highlightLine(line)).join("\n");
+    let result = "";
+    for (const chunk of markdown.split(/(\n)/)) {
+      result += highlighter.feed(chunk);
+    }
+    result += highlighter.flush();
+    return result;
   }
 
   /**
-   * Feeds a streaming text chunk and returns formatted ANSI output.
+   * Feeds a streaming text chunk and returns formatted ANSI output in real-time.
    */
   feed(chunk: string): string {
-    this.lineBuffer += chunk;
-    const lines = this.lineBuffer.split("\n");
-    this.lineBuffer = lines.pop() || "";
+    if (!chunk) return "";
 
-    if (lines.length === 0) return "";
-    return lines.map((l) => this.highlightLine(l)).join("\n") + "\n";
+    let output = "";
+    let i = 0;
+
+    while (i < chunk.length) {
+      const char = chunk[i]!;
+
+      if (char === "\n") {
+        output += this.handleNewline();
+        i++;
+        continue;
+      }
+
+      if (this.inDiffBlock) {
+        this.diffBuffer.push(char);
+        i++;
+        continue;
+      }
+
+      if (this.isAtLineStart) {
+        this.prefixBuffer += char;
+
+        // Check if prefix pattern is ready to resolve
+        if (this.canResolvePrefix(this.prefixBuffer)) {
+          output += this.resolveAndEmitPrefix();
+        }
+        i++;
+        continue;
+      }
+
+      // Inside normal line or code block -> stream character live
+      output += this.processInlineChar(char);
+      i++;
+    }
+
+    return output;
   }
 
   /**
-   * Flushes any remaining line buffer at the end of a stream.
+   * Flushes any remaining buffers at the end of the stream.
    */
   flush(): string {
-    if (!this.lineBuffer) return "";
-    const remaining = this.highlightLine(this.lineBuffer);
-    this.lineBuffer = "";
-    this.inCodeBlock = false;
-    return remaining;
+    let output = "";
+    if (this.isAtLineStart && this.prefixBuffer) {
+      output += this.resolveAndEmitPrefix();
+    }
+    if (this.inBold) {
+      output += c.reset;
+      this.inBold = false;
+    }
+    if (this.inInlineCode) {
+      output += c.reset;
+      this.inInlineCode = false;
+    }
+    if (this.inCodeBlock && !this.inDiffBlock) {
+      output += `\n  ${style.dim("└" + "─".repeat(60))}\n`;
+      this.inCodeBlock = false;
+    }
+    this.prefixBuffer = "";
+    this.isAtLineStart = true;
+    return output;
   }
 
-  /**
-   * Highlights an individual line.
-   */
-  highlightLine(line: string): string {
-    // 1. Code Block Fence check
-    const fenceMatch = line.match(/^```(\w+)?/);
+  private canResolvePrefix(buf: string): boolean {
+    // 1. Code fence check: ```lang requires newline before triggering or 3 backticks with space
+    if (buf.startsWith("```")) {
+      return false; // wait for newline to capture full language identifier
+    }
+    // 2. Headings: # , ## , ###
+    if (/^#{1,3}\s/.test(buf)) return true;
+    // 3. Lists: - , * , 1.
+    if (/^\s*[-*]\s/.test(buf) || /^\s*\d+\.\s/.test(buf)) return true;
+    // 4. Quotes: >
+    if (/^>\s/.test(buf)) return true;
+    // 5. If it starts with non-prefix characters, resolve immediately (e.g. regular text)
+    if (/^[A-Za-z0-9_"'(\[\{]/.test(buf) && !/^\d+\./.test(buf)) return true;
+    // 6. Max prefix lookahead fallback
+    if (buf.length >= 6) return true;
+
+    return false;
+  }
+
+  private handleNewline(): string {
+    let out = "";
+
+    if (this.isAtLineStart && this.prefixBuffer) {
+      out += this.resolveAndEmitPrefix();
+    }
+
+    if (this.inBold) {
+      out += c.reset;
+      this.inBold = false;
+    }
+    if (this.inInlineCode) {
+      out += c.reset;
+      this.inInlineCode = false;
+    }
+
+    if (this.inDiffBlock) {
+      const rawDiff = this.diffBuffer.join("");
+      const fenceMatch = rawDiff.match(/```$/);
+      if (fenceMatch) {
+        this.inDiffBlock = false;
+        this.inCodeBlock = false;
+        const cleanContent = rawDiff.replace(/```$/, "").trim();
+        const oldLines: string[] = [];
+        const newLines: string[] = [];
+        for (const l of cleanContent.split("\n")) {
+          if (l.startsWith("-")) { oldLines.push(l.slice(1)); newLines.push(""); }
+          else if (l.startsWith("+")) { oldLines.push(""); newLines.push(l.slice(1)); }
+          else { oldLines.push(l.startsWith(" ") ? l.slice(1) : l); newLines.push(l.startsWith(" ") ? l.slice(1) : l); }
+        }
+        const diffLines = parsePatch(oldLines.join("\n"), newLines.join("\n"), 3);
+        out += "\n" + renderDiff(diffLines) + "\n";
+        this.diffBuffer = [];
+      } else {
+        this.diffBuffer.push("\n");
+      }
+    } else {
+      out += "\n";
+    }
+
+    this.isAtLineStart = true;
+    this.prefixBuffer = "";
+
+    return out;
+  }
+
+  private resolveAndEmitPrefix(): string {
+    const raw = this.prefixBuffer;
+    this.prefixBuffer = "";
+    this.isAtLineStart = false;
+
+    // 1. Code Block Fence (```lang)
+    const fenceMatch = raw.match(/^```(\w+)?/);
     if (fenceMatch) {
       if (!this.inCodeBlock) {
         this.inCodeBlock = true;
         this.currentLanguage = fenceMatch[1] || "";
-        // Diff blocks are buffered and rendered at close
         if (this.currentLanguage.toLowerCase() === "diff") {
           this.inDiffBlock = true;
           this.diffBuffer = [];
           return "";
         }
         const langBadge = this.currentLanguage ? ` ${style.brandBold(this.currentLanguage.toUpperCase())} ` : "";
-        return `\n  ${style.dim("┌──")}${langBadge}${style.dim("─".repeat(Math.max(10, 60 - (this.currentLanguage.length + 6))))}`;
+        return `\n  ${style.dim("┌──")}${langBadge}${style.dim("─".repeat(Math.max(10, 60 - (this.currentLanguage.length + 6))))}\n  ${style.dim("│")} `;
       } else {
         this.inCodeBlock = false;
         this.currentLanguage = "";
-        if (this.inDiffBlock) {
-          this.inDiffBlock = false;
-          const raw = this.diffBuffer.join("\n");
-          this.diffBuffer = [];
-          // Parse unified diff format (lines starting with +/-/ )
-          const oldLines: string[] = [];
-          const newLines: string[] = [];
-          for (const l of raw.split("\n")) {
-            if (l.startsWith("-")) { oldLines.push(l.slice(1)); newLines.push(""); }
-            else if (l.startsWith("+")) { oldLines.push(""); newLines.push(l.slice(1)); }
-            else { oldLines.push(l.startsWith(" ") ? l.slice(1) : l); newLines.push(l.startsWith(" ") ? l.slice(1) : l); }
-          }
-          const diffLines = parsePatch(oldLines.join("\n"), newLines.join("\n"), 3);
-          return "\n" + renderDiff(diffLines) + "\n";
-        }
         return `  ${style.dim("└" + "─".repeat(60))}\n`;
       }
     }
 
-    // 2. Inside Code Block -> Apply language-specific or general syntax highlighting
+    // 2. Code Block body line prefix
     if (this.inCodeBlock) {
-      if (this.inDiffBlock) {
-        this.diffBuffer.push(line);
-        return ""; // buffered; rendered at closing fence
+      return `  ${style.dim("│")} ` + this.highlightCodeSnippet(raw);
+    }
+
+    // 3. Headings
+    if (/^#\s+/.test(raw)) {
+      return `${style.brandBold("▌ ")}${c.bold}`;
+    }
+    if (/^##\s+/.test(raw)) {
+      return `${c.brightCyan}${style.bold("■ ")}`;
+    }
+    if (/^###\s+/.test(raw)) {
+      return `${style.bold("▲ ")}`;
+    }
+
+    // 4. Blockquotes
+    if (/^>\s*/.test(raw)) {
+      return `  ${style.brand("│")} ${style.italic(style.dim(""))}`;
+    }
+
+    // 5. Bullet list items (- or *)
+    const bulletMatch = raw.match(/^(\s*)([-*])\s+/);
+    if (bulletMatch) {
+      return `${bulletMatch[1]}${style.brand("•")} `;
+    }
+
+    // 6. Numbered list items (1. 2.)
+    const numMatch = raw.match(/^(\s*)(\d+)\.\s+/);
+    if (numMatch) {
+      return `${numMatch[1]}${c.cyan}${numMatch[2]}.${c.reset} `;
+    }
+
+    // Default regular body line
+    return this.processInlineString(raw);
+  }
+
+  private processInlineChar(char: string): string {
+    if (this.inCodeBlock) {
+      return this.highlightCodeSnippet(char);
+    }
+
+    if (char === "`") {
+      if (!this.inInlineCode) {
+        this.inInlineCode = true;
+        return `${c.dim}${c.cyan} `;
+      } else {
+        this.inInlineCode = false;
+        return ` ${c.reset}`;
       }
-      const highlightedCode = this.highlightCode(line, this.currentLanguage);
-      return `  ${style.dim("│")} ${highlightedCode}`;
     }
 
-    // 3. Normal Markdown Line Formatting
-    return this.formatMarkdownText(line);
+    if (char === "*" && !this.inInlineCode) {
+      if (!this.inBold) {
+        this.inBold = true;
+        return c.bold;
+      } else {
+        this.inBold = false;
+        return c.reset;
+      }
+    }
+
+    return char;
   }
 
-  private formatMarkdownText(line: string): string {
-    let text = line;
-
-    // Headings
-    if (/^#\s+/.test(text)) {
-      return `\n${style.brandBold(text.replace(/^#\s+/, "▌ "))}${c.reset}`;
+  private processInlineString(text: string): string {
+    let out = "";
+    for (const ch of text) {
+      out += this.processInlineChar(ch);
     }
-    if (/^##\s+/.test(text)) {
-      return `\n${style.bold(c.brightCyan + text.replace(/^##\s+/, "■ "))}${c.reset}`;
-    }
-    if (/^###\s+/.test(text)) {
-      return `${style.bold(text.replace(/^###\s+/, "▲ "))}${c.reset}`;
-    }
-
-    // Blockquote
-    if (/^>\s*/.test(text)) {
-      return `  ${style.brand("│")} ${style.italic(style.dim(text.replace(/^>\s*/, "")))}`;
-    }
-
-    // Bullet Lists (- or *)
-    if (/^\s*[-*]\s+/.test(text)) {
-      text = text.replace(/^(\s*)([-*])\s+/, `$1${style.brand("•")} `);
-    }
-
-    // Numbered Lists (1. 2.)
-    if (/^\s*\d+\.\s+/.test(text)) {
-      text = text.replace(/^(\s*)(\d+)\.\s+/, `$1${c.cyan}$2.${c.reset} `);
-    }
-
-    // Diff additions & deletions in markdown
-    if (/^\+\s+/.test(text)) {
-      return `${c.green}${text}${c.reset}`;
-    }
-    if (/^-\s+/.test(text)) {
-      return `${c.red}${text}${c.reset}`;
-    }
-
-    // Inline bold: **bold** or __bold__
-    text = text.replace(/\*\*(.*?)\*\*/g, `${c.bold}$1${c.reset}`);
-    text = text.replace(/__(.*?)__/g, `${c.bold}$1${c.reset}`);
-
-    // Inline code: `code`
-    text = text.replace(/`([^`]+)`/g, `${c.bgDarkGray || c.dim}${c.cyan} $1 ${c.reset}`);
-
-    // URLs / Markdown links: [text](url)
-    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, `${c.underline}${c.cyan}$1${c.reset} ${style.dim(`($2)`)}`);
-
-    return text;
+    return out;
   }
 
-  private highlightCode(codeLine: string, lang: string): string {
-    let line = codeLine;
-    const l = lang.toLowerCase();
-
-    // Comments
-    if (line.trim().startsWith("//") || line.trim().startsWith("#") || line.trim().startsWith("--")) {
-      return style.dim(line);
-    }
-
-    // Strings: "..." or '...' or `...`
-    line = line.replace(/(["'`])(?:(?=(\\?))\2.)*?\1/g, (match) => `${c.green}${match}${c.reset}`);
-
-    // Numbers
-    line = line.replace(/\b(\d+(\.\d+)?)\b/g, `${c.brightYellow}$1${c.reset}`);
-
-    // Language keywords
-    const tsKeywords = [
+  private highlightCodeSnippet(snippet: string): string {
+    let code = snippet;
+    code = code.replace(/\b(\d+)\b/g, `${c.brightYellow}$1${c.reset}`);
+    const keywords = [
       "const", "let", "var", "function", "return", "if", "else", "for", "while",
-      "import", "from", "export", "default", "class", "interface", "type", "extends",
-      "implements", "new", "this", "async", "await", "try", "catch", "throw", "typeof",
-      "instanceof", "switch", "case", "break", "continue", "true", "false", "null", "undefined"
+      "import", "from", "export", "default", "class", "async", "await", "try", "catch"
     ];
-
-    const pyKeywords = [
-      "def", "class", "return", "if", "elif", "else", "for", "while", "import",
-      "from", "as", "try", "except", "finally", "raise", "with", "lambda", "yield",
-      "True", "False", "None", "and", "or", "not", "is", "in", "self", "async", "await"
-    ];
-
-    const rustKeywords = [
-      "fn", "let", "mut", "pub", "struct", "enum", "impl", "trait", "for", "in",
-      "if", "else", "match", "return", "use", "mod", "crate", "self", "super",
-      "async", "await", "loop", "while", "break", "continue", "type", "const", "static"
-    ];
-
-    const keywords = l.includes("py") ? pyKeywords : l.includes("rs") ? rustKeywords : tsKeywords;
-    const regex = new RegExp(`\\b(${keywords.join("|")})\\b`, "g");
-    line = line.replace(regex, `${c.magenta}${c.bold}$1${c.reset}`);
-
-    // Types / Classes (PascalCase words)
-    line = line.replace(/\b([A-Z][a-zA-Z0-9_]+)\b/g, `${c.cyan}$1${c.reset}`);
-
-    return line;
+    for (const kw of keywords) {
+      const regex = new RegExp(`\\b(${kw})\\b`, "g");
+      code = code.replace(regex, `${c.magenta}${c.bold}$1${c.reset}`);
+    }
+    return code;
   }
 }

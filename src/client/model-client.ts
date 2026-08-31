@@ -1,7 +1,9 @@
 /**
  * Model Gateway Client for Groupy.
- * Connects to OpenAI-compatible endpoints with SSE streaming and tool calling.
+ * Connects to OpenAI-compatible endpoints with SSE streaming, tool calling, and resilient retries.
  * Supports automated credential discovery from ~/.groupy/credentials.json.
+ * 
+ * Directly mirrors codex-rs/core/src/client.rs and responses_retry.rs.
  */
 
 import type { ConversationItem } from "../protocol/items";
@@ -30,6 +32,10 @@ export type StreamChunkEvent =
       outputTokens?: number;
     }
   | {
+      type: "warning";
+      message: string;
+    }
+  | {
       type: "error";
       error: Error;
     };
@@ -42,6 +48,7 @@ export interface ModelSamplingParams {
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
+  maxRetries?: number;
 }
 
 export interface ModelClientSession {
@@ -52,6 +59,7 @@ export interface ModelClientConfig {
   apiKey?: string;
   baseUrl?: string;
   defaultModel?: string;
+  maxRetries?: number;
 }
 
 export class ModelClient {
@@ -80,12 +88,24 @@ export class DefaultModelClientSession implements ModelClientSession {
       savedCreds?.baseUrl ||
       "https://api.groupy-hub.store/v1"
     ).replace(/\/+$/, "");
-    const model = params.model || this.config.defaultModel || process.env.GROUPY_MODEL || process.env.OPENAI_MODEL || "groupy";
+    const model =
+      params.model ||
+      this.config.defaultModel ||
+      process.env.GROUPY_MODEL ||
+      process.env.OPENAI_MODEL ||
+      "groupy";
 
-    if (!apiKey && !baseUrl.includes("localhost") && !baseUrl.includes("127.0.0.1") && !baseUrl.includes("groupy-hub.store")) {
+    if (
+      !apiKey &&
+      !baseUrl.includes("localhost") &&
+      !baseUrl.includes("127.0.0.1") &&
+      !baseUrl.includes("groupy-hub.store")
+    ) {
       yield {
         type: "error",
-        error: new Error("Authentication required. Please run 'pikaa login' or set GROUPY_API_KEY / OPENAI_API_KEY."),
+        error: new Error(
+          "Authentication required. Please run 'pikaa login' or set GROUPY_API_KEY / OPENAI_API_KEY."
+        ),
       };
       return;
     }
@@ -107,32 +127,92 @@ export class DefaultModelClientSession implements ModelClientSession {
       },
     ];
 
-    for (const item of params.history) {
+    for (let i = 0; i < params.history.length; i++) {
+      const item = params.history[i]!;
+
       if (item.type === "user_message") {
         messages.push({
           role: "user",
           content: item.content,
         });
       } else if (item.type === "agent_message") {
-        messages.push({
-          role: "assistant",
-          content: item.content,
-        });
+        // Strip any residual raw <think> tags from history
+        const cleanedContent = item.content
+          .replace(/<think>[\s\S]*?<\/think>/gi, "")
+          .replace(/<\/?think>/gi, "")
+          .trim();
+
+        // Check if subsequent items are function calls belonging to this turn
+        const toolCalls: Array<{
+          id: string;
+          type: "function";
+          function: { name: string; arguments: string };
+        }> = [];
+
+        let j = i + 1;
+        while (j < params.history.length && params.history[j]?.type === "function_call") {
+          const fc = params.history[j] as any;
+          toolCalls.push({
+            id: fc.callId,
+            type: "function",
+            function: {
+              name: fc.name,
+              arguments: JSON.stringify(fc.arguments),
+            },
+          });
+          j++;
+        }
+
+        if (toolCalls.length > 0) {
+          messages.push({
+            role: "assistant",
+            content: null,
+            tool_calls: toolCalls,
+          });
+          i = j - 1; // advance past consumed function calls
+        } else if (cleanedContent) {
+          messages.push({
+            role: "assistant",
+            content: cleanedContent,
+          });
+        }
       } else if (item.type === "function_call") {
+        // Standalone function call without preceding agent_message
+        const toolCalls: Array<{
+          id: string;
+          type: "function";
+          function: { name: string; arguments: string };
+        }> = [
+          {
+            id: item.callId,
+            type: "function",
+            function: {
+              name: item.name,
+              arguments: JSON.stringify(item.arguments),
+            },
+          },
+        ];
+
+        let j = i + 1;
+        while (j < params.history.length && params.history[j]?.type === "function_call") {
+          const fc = params.history[j] as any;
+          toolCalls.push({
+            id: fc.callId,
+            type: "function",
+            function: {
+              name: fc.name,
+              arguments: JSON.stringify(fc.arguments),
+            },
+          });
+          j++;
+        }
+
         messages.push({
           role: "assistant",
           content: null,
-          tool_calls: [
-            {
-              id: item.callId,
-              type: "function",
-              function: {
-                name: item.name,
-                arguments: JSON.stringify(item.arguments),
-              },
-            },
-          ],
+          tool_calls: toolCalls,
         });
+        i = j - 1;
       } else if (item.type === "function_call_output") {
         messages.push({
           role: "tool",
@@ -165,38 +245,92 @@ export class DefaultModelClientSession implements ModelClientSession {
       body.tool_choice = "auto";
     }
 
-    let response: Response;
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (apiKey) {
-        headers["Authorization"] = `Bearer ${apiKey}`;
-      }
+    const maxRetries = params.maxRetries ?? this.config.maxRetries ?? 10; // User-requested 10 retries
+    let attempt = 0;
+    let response: Response | null = null;
 
-      response = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: params.signal,
-      });
-    } catch (fetchErr) {
-      yield {
-        type: "error",
-        error: new Error(`Network error connecting to AI gateway (${baseUrl}): ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`),
-      };
-      return;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
     }
 
-    if (!response.ok) {
-      let errBody = "";
+    // Resilient retry loop with exponential backoff
+    while (attempt <= maxRetries) {
+      if (params.signal?.aborted) {
+        return;
+      }
+
       try {
-        errBody = await response.text();
-      } catch {}
-      yield {
-        type: "error",
-        error: new Error(`Model API error (${response.status}): ${errBody || response.statusText}`),
-      };
+        response = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: params.signal,
+        });
+
+        if (response.ok) {
+          break; // Successful connection
+        }
+
+        // Retry on 429, 500, 502, 503, 504
+        const isRetryable =
+          response.status === 429 ||
+          response.status === 500 ||
+          response.status === 502 ||
+          response.status === 503 ||
+          response.status === 504;
+
+        if (!isRetryable || attempt >= maxRetries) {
+          let errBody = "";
+          try {
+            errBody = await response.text();
+          } catch {}
+          yield {
+            type: "error",
+            error: new Error(
+              `Model API error (${response.status}): ${errBody || response.statusText}`
+            ),
+          };
+          return;
+        }
+
+        attempt++;
+        const backoffMs = Math.min(300 * Math.pow(1.5, attempt) + Math.random() * 200, 5000);
+        yield {
+          type: "warning",
+          message: `Model API returned HTTP ${response.status}. Retrying attempt ${attempt}/${maxRetries} in ${Math.round(backoffMs)}ms...`,
+        };
+        await new Promise((r) => setTimeout(r, backoffMs));
+      } catch (fetchErr) {
+        if (params.signal?.aborted) {
+          return;
+        }
+
+        attempt++;
+        if (attempt > maxRetries) {
+          yield {
+            type: "error",
+            error: new Error(
+              `Network error connecting to AI gateway (${baseUrl}) after ${maxRetries} retries: ${
+                fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
+              }`
+            ),
+          };
+          return;
+        }
+
+        const backoffMs = Math.min(300 * Math.pow(1.5, attempt) + Math.random() * 200, 5000);
+        yield {
+          type: "warning",
+          message: `Network error connecting to model provider (${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}). Retrying attempt ${attempt}/${maxRetries} in ${Math.round(backoffMs)}ms...`,
+        };
+        await new Promise((r) => setTimeout(r, backoffMs));
+      }
+    }
+
+    if (!response || !response.ok) {
       return;
     }
 
@@ -212,6 +346,8 @@ export class DefaultModelClientSession implements ModelClientSession {
     const decoder = new TextDecoder();
     let buffer = "";
     let usageMetrics: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
+
+    let inThinkTag = false;
 
     // Accumulators for multi-chunk tool calls
     const pendingToolCalls = new Map<
@@ -248,6 +384,7 @@ export class DefaultModelClientSession implements ModelClientSession {
               };
             }
             pendingToolCalls.clear();
+
             yield {
               type: "done",
               inputTokens: usageMetrics.inputTokens,
@@ -257,71 +394,109 @@ export class DefaultModelClientSession implements ModelClientSession {
             return;
           }
 
+          let parsed: any;
           try {
-            const data = JSON.parse(dataStr);
-            if (data.usage) {
-              usageMetrics = {
-                inputTokens: data.usage.prompt_tokens,
-                outputTokens: data.usage.completion_tokens,
-                totalTokens: data.usage.total_tokens,
-              };
-            }
+            parsed = JSON.parse(dataStr);
+          } catch {
+            continue;
+          }
 
-            const choice = data.choices?.[0];
-            if (!choice) continue;
+          if (parsed.usage) {
+            usageMetrics = {
+              inputTokens: parsed.usage.prompt_tokens,
+              outputTokens: parsed.usage.completion_tokens,
+              totalTokens: parsed.usage.total_tokens,
+            };
+          }
 
-            const delta = choice.delta;
+          const choice = parsed.choices?.[0];
+          if (!choice) continue;
 
-            // Handle reasoning delta (DeepSeek / GLM / o1 / o3 style)
-            if (delta.reasoning_content || delta.reasoning) {
-              const rDelta = delta.reasoning_content || delta.reasoning;
-              yield {
-                type: "reasoning_delta",
-                delta: rDelta,
-              };
-            }
+          const delta = choice.delta;
+          if (!delta) continue;
 
-            // Handle standard text delta
-            if (delta.content) {
-              yield {
-                type: "text_delta",
-                delta: delta.content,
-              };
-            }
+          // 1. Reasoning Delta
+          if (delta.reasoning_content || delta.reasoning) {
+            yield {
+              type: "reasoning_delta",
+              delta: delta.reasoning_content || delta.reasoning,
+            };
+          }
 
-            // Handle streaming tool calls
-            if (delta.tool_calls) {
-              for (const tc of delta.tool_calls) {
-                const idx = tc.index ?? 0;
-                if (!pendingToolCalls.has(idx)) {
-                  pendingToolCalls.set(idx, {
-                    id: tc.id || `call_${Date.now()}_${idx}`,
-                    name: tc.function?.name || "",
-                    arguments: tc.function?.arguments || "",
-                  });
+          // 2. Text Delta & Embedded <think> tag demuxing
+          if (delta.content) {
+            let contentStr: string = delta.content;
+
+            while (contentStr.length > 0) {
+              if (!inThinkTag) {
+                const thinkStart = contentStr.indexOf("<think>");
+                if (thinkStart === -1) {
+                  // Check if there is an orphan </think> tag without opening
+                  const strayEnd = contentStr.indexOf("</think>");
+                  if (strayEnd !== -1) {
+                    const before = contentStr.slice(0, strayEnd);
+                    const after = contentStr.slice(strayEnd + 8);
+                    contentStr = before + after;
+                    continue;
+                  }
+                  yield {
+                    type: "text_delta",
+                    delta: contentStr,
+                  };
+                  break;
                 } else {
-                  const current = pendingToolCalls.get(idx)!;
-                  if (tc.id) current.id = tc.id;
-                  if (tc.function?.name) {
-                    if (!current.name) {
-                      current.name = tc.function.name;
-                    } else if (tc.function.name !== current.name && !current.name.includes(tc.function.name)) {
-                      current.name += tc.function.name;
-                    }
+                  if (thinkStart > 0) {
+                    yield {
+                      type: "text_delta",
+                      delta: contentStr.slice(0, thinkStart),
+                    };
                   }
-                  if (tc.function?.arguments) {
-                    current.arguments += tc.function.arguments;
+                  inThinkTag = true;
+                  contentStr = contentStr.slice(thinkStart + 7);
+                }
+              } else {
+                const thinkEnd = contentStr.indexOf("</think>");
+                if (thinkEnd === -1) {
+                  yield {
+                    type: "reasoning_delta",
+                    delta: contentStr,
+                  };
+                  break;
+                } else {
+                  if (thinkEnd > 0) {
+                    yield {
+                      type: "reasoning_delta",
+                      delta: contentStr.slice(0, thinkEnd),
+                    };
                   }
+                  inThinkTag = false;
+                  contentStr = contentStr.slice(thinkEnd + 8);
                 }
               }
             }
-          } catch {
-            // Skip invalid JSON lines
+          }
+
+          // 3. Tool Calls (incremental chunks)
+          if (Array.isArray(delta.tool_calls)) {
+            for (const tc of delta.tool_calls) {
+              const index = tc.index ?? 0;
+              const existing = pendingToolCalls.get(index) || {
+                id: tc.id || `call_${Date.now()}_${index}`,
+                name: "",
+                arguments: "",
+              };
+
+              if (tc.id) existing.id = tc.id;
+              if (tc.function?.name) existing.name += tc.function.name;
+              if (tc.function?.arguments) existing.arguments += tc.function.arguments;
+
+              pendingToolCalls.set(index, existing);
+            }
           }
         }
       }
 
-      // Final tool call emission if not caught by [DONE]
+      // Final flush if [DONE] was missing
       for (const tc of pendingToolCalls.values()) {
         let parsedArgs = {};
         try {
@@ -334,11 +509,19 @@ export class DefaultModelClientSession implements ModelClientSession {
           arguments: parsedArgs,
         };
       }
-      pendingToolCalls.clear();
 
-      yield { type: "done" };
-    } finally {
-      reader.releaseLock();
+      yield {
+        type: "done",
+        inputTokens: usageMetrics.inputTokens,
+        outputTokens: usageMetrics.outputTokens,
+        totalTokens: usageMetrics.totalTokens,
+      };
+    } catch (streamErr) {
+      yield {
+        type: "error",
+        error:
+          streamErr instanceof Error ? streamErr : new Error(String(streamErr)),
+      };
     }
   }
 }

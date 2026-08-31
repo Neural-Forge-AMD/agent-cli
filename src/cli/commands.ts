@@ -5,9 +5,12 @@
 import { c, style } from "./ui/colors";
 import { InteractiveLineEditor } from "./ui/line-editor";
 import { formatDuration } from "./ui/spinner";
+import { AsciiAnimation, ALL_ANIMATION_VARIANTS, type AnimationVariant } from "./ui/animation";
+import { CliFormatter } from "./ui/formatter";
 import { estimateTotalTokens } from "../context/compactor";
 import { CredentialsStore } from "../auth/store";
 import { AuthClient } from "../auth/oauth";
+import { runSecurityScan } from "../security/scanner";
 import type { Session } from "../session/session";
 import type { AgentSpawner } from "../agents/spawner";
 import type { McpManager } from "../mcp/manager";
@@ -16,6 +19,9 @@ import type { SkillsLoader } from "../skills/loader";
 import type { MemoryStore } from "../memories/store";
 import type { WorktreeManager } from "../worktree/manager";
 import type { CliRepl } from "./repl";
+import { CHROME_DEVTOOLS_MCP_SERVER_PATH } from "../mcp/servers/chrome-devtools";
+import { WEB_SEARCH_MCP_SERVER_PATH } from "../mcp/servers/web-search";
+import { SQLITE_MCP_SERVER_PATH } from "../mcp/servers/sqlite";
 
 export interface SlashCommandDef {
   name: string;
@@ -35,8 +41,10 @@ export const AVAILABLE_SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "/worktrees", description: "List active isolated Git Worktrees" },
   { name: "/sessions", description: "List saved past sessions from SQLite store" },
   { name: "/roles", description: "List available agent roles & nicknames" },
+  { name: "/security", description: "Scan codebase for vulnerabilities & secrets (Strix)" },
   { name: "/agents", description: "List active sub-agents & execution status" },
   { name: "/mcp", description: "List connected Model Context Protocol servers" },
+  { name: "/animate", description: "Preview 36-frame ASCII art animation variants" },
   { name: "/compact", description: "Trigger manual token history compaction" },
   { name: "/clear", description: "Clear terminal screen" },
   { name: "/logout", description: "Clear stored authentication credentials" },
@@ -113,11 +121,12 @@ export async function handleSlashCommand(
       return true;
 
     case "/mcp":
-      printMcp(ctx);
+      await handleMcpCommand(ctx, args);
       return true;
 
     case "/skills":
-      printSkills(ctx);
+    case "/skill":
+      handleSkillsCommand(ctx, args);
       return true;
 
     case "/memories":
@@ -134,6 +143,18 @@ export async function handleSlashCommand(
       printSessions(ctx);
       return true;
 
+    case "/security":
+    case "/audit":
+    case "/vuln":
+    case "/pentest":
+      await handleSecurityCommand(ctx, args);
+      return true;
+
+    case "/animate":
+    case "/animation":
+      await handleAnimate(args[0]);
+      return true;
+
     case "/compact":
       console.log(style.brand("◆ Compacting conversation history..."));
       await ctx.session.submit({ type: "TurnInput", request: { text: "/compact" } });
@@ -146,6 +167,16 @@ export async function handleSlashCommand(
     case "/exit":
     case "/quit":
       console.log(style.dim("Goodbye!"));
+      if (ctx.mcpManager) {
+        try {
+          await ctx.mcpManager.closeAll();
+        } catch {}
+      }
+      if (ctx.repl) {
+        try {
+          await ctx.repl.close();
+        } catch {}
+      }
       process.exit(0);
 
     default:
@@ -238,7 +269,7 @@ export async function handleInteractiveLogin(backendUrl?: string): Promise<void>
   const authClient = new AuthClient(credStore);
   const targetBackend = backendUrl || process.env.GROUPY_BACKEND_URL || "https://api.groupy-hub.store";
 
-  console.log(style.brand(`\n🔐 Logging into Backend: ${targetBackend}`));
+  console.log(style.brand(`\n Logging into Backend: ${targetBackend}`));
 
   try {
     const { authUrl, waitForToken } = await authClient.startOAuthFlow({
@@ -387,22 +418,65 @@ function printMcp(ctx: CommandContext): void {
   console.log();
 }
 
-function printSkills(ctx: CommandContext): void {
+function handleSkillsCommand(ctx: CommandContext, args: string[]): void {
   const loader = ctx.skillsLoader;
   if (!loader) {
     console.log(style.yellow("Skills loader not active."));
     return;
   }
 
-  const skills = loader.listSkills(ctx.session.cwd);
+  const sub = (args[0] || "").toLowerCase();
+  const target = (args[1] || "").toLowerCase();
+
+  if (sub === "disable" || sub === "off") {
+    if (!target) {
+      console.log(style.yellow("Usage: /skills disable <skill-name>"));
+      return;
+    }
+    loader.disableSkill(target);
+    console.log(style.yellow(`\n  ✕ Skill '${target}' disabled.\n`));
+    return;
+  }
+
+  if (sub === "enable" || sub === "on") {
+    if (!target) {
+      console.log(style.yellow("Usage: /skills enable <skill-name>"));
+      return;
+    }
+    loader.enableSkill(target);
+    console.log(style.green(`\n  ✓ Skill '${target}' enabled.\n`));
+    return;
+  }
+
+  if (sub === "toggle") {
+    if (!target) {
+      console.log(style.yellow("Usage: /skills toggle <skill-name>"));
+      return;
+    }
+    const state = loader.toggleSkill(target);
+    if (state) {
+      console.log(style.green(`\n  ✓ Skill '${target}' is now ENABLED.\n`));
+    } else {
+      console.log(style.yellow(`\n  ✕ Skill '${target}' is now DISABLED.\n`));
+    }
+    return;
+  }
+
+  const skills = loader.listSkills(ctx.session.cwd, { includeDisabled: true });
   console.log();
   if (skills.length === 0) {
     console.log(style.dim("  No domain skills discovered in .agents/skills/ or ~/.groupy/skills/"));
   } else {
-    console.log(style.bold("  Discovered Domain Skills:"));
+    console.log(style.bold("  Available Domain Skills (Built-in, Workspace, & Global):"));
     for (const s of skills) {
-      console.log(`    • ${style.cyan(s.name)} [${style.dim(s.scope)}]: ${s.description}`);
+      const isEnabled = !loader.isSkillDisabled(s.name);
+      const statusTag = isEnabled ? style.green("[ENABLED]") : style.dim("[DISABLED]");
+      const scopeTag = style.cyan(`[${s.scope}]`);
+      console.log(`    • ${style.bold(s.name)} ${scopeTag} ${statusTag}`);
+      console.log(`      ${style.dim(s.description)}`);
     }
+    console.log();
+    console.log(style.dim("  Commands: /skills disable <name> | /skills enable <name> | /skills toggle <name>"));
   }
   console.log();
 }
@@ -484,3 +558,260 @@ function printSessionStats(ctx: CommandContext): void {
   console.log(style.bold("  └─────────────────────────────────────────────────────────"));
   console.log();
 }
+
+async function handleAnimate(variantName?: string): Promise<void> {
+  const chosen = variantName?.toLowerCase() as AnimationVariant | undefined;
+
+  if (chosen && ALL_ANIMATION_VARIANTS.includes(chosen)) {
+    console.log(`\n  ${style.brand("◆")} Playing 36-frame animation variant: ${style.bold(chosen)}...\n`);
+    const anim = new AsciiAnimation({
+      variant: chosen,
+      frameTickMs: 60,
+      colorFn: (frame) => style.brand(frame),
+    });
+    await anim.play(2500, { clearScreen: false });
+    console.log();
+    return;
+  }
+
+  console.log();
+  console.log(style.bold("  36-Frame ASCII Art Animation Catalog:"));
+  for (const v of ALL_ANIMATION_VARIANTS) {
+    console.log(`    • ${style.cyan(v)} - ${style.dim(`/animate ${v}`)}`);
+  }
+  console.log(`\n  ${style.dim("Playing random variant for 2 seconds...")}\n`);
+  const anim = new AsciiAnimation({
+    variant: "default",
+    frameTickMs: 60,
+    colorFn: (frame) => style.brand(frame),
+  });
+  anim.pickRandomVariant();
+  await anim.play(2000);
+  console.log();
+}
+
+async function handleSecurityCommand(ctx: CommandContext, args: string[]): Promise<void> {
+  const sub = (args[0] || "scan").toLowerCase();
+  const target = args[1] || ctx.session.cwd;
+
+  if (sub === "help") {
+    console.log();
+    console.log(style.bold("    Security & Vulnerability Assessment Commands (Strix):"));
+    console.log(`    ${style.cyan("/security scan")}          - Scan repository for exposed secrets & OWASP Top 10 vulnerabilities`);
+    console.log(`    ${style.cyan("/security audit <path>")}  - Run security audit on a specific file or directory`);
+    console.log(`    ${style.cyan("/security fix")}           - Spawn security-auditor sub-agent to remediate vulnerabilities`);
+    console.log();
+    return;
+  }
+
+  if (sub === "fix") {
+    const spawner = ctx.spawner;
+    if (!spawner) {
+      console.log(style.yellow("\n  Multi-agent spawner not active. Running in main session...\n"));
+      await ctx.session.submit({
+        type: "TurnInput",
+        request: { text: "Perform a security audit, find all vulnerabilities and exposed secrets, and apply safe code patches to remediate them." },
+      });
+      return;
+    }
+    console.log(style.brand("\n    Spawning autonomous security-auditor sub-agent..."));
+    const handle = await spawner.spawnAgent({
+      taskName: "security_remediation",
+      message: "Perform a security audit across the codebase, identify all vulnerabilities and exposed secrets, and apply safe code patches to remediate them.",
+      role: "security-auditor",
+    });
+    console.log(style.green(`  ✓ Sub-agent '${handle.nickname}' (${handle.id}) spawned with role: ${handle.role}\n`));
+    return;
+  }
+
+  // Default: scan or audit
+  console.log(style.brand(`\n    Running static security scan on: ${style.dim(target)} ...`));
+  const report = await runSecurityScan(target);
+  CliFormatter.printSecurityReport(report);
+}
+
+async function handleMcpCommand(ctx: CommandContext, args: string[]): Promise<void> {
+  const manager = ctx.mcpManager;
+  if (!manager) {
+    console.log(style.yellow("\n  MCP Manager is not active in current session.\n"));
+    return;
+  }
+
+  const sub = (args[0] || "list").toLowerCase();
+
+  if (sub === "help") {
+    console.log();
+    console.log(style.bold("  🔌 Model Context Protocol (MCP) Commands:"));
+    console.log(`    ${style.cyan("/mcp")} or ${style.cyan("/mcp list")}                - List all connected MCP servers & capabilities`);
+    console.log(`    ${style.cyan("/mcp tools [server]")}             - List tools exposed by MCP servers`);
+    console.log(`    ${style.cyan("/mcp resources [server]")}         - List resources exposed by MCP servers`);
+    console.log(`    ${style.cyan("/mcp test <server>")}              - Ping an MCP server and measure latency`);
+    console.log(`    ${style.cyan("/mcp add chrome")}                 - Connect built-in Chrome DevTools browser automation`);
+    console.log(`    ${style.cyan("/mcp add search")}                 - Connect built-in Cloud Web Search & Live Docs MCP`);
+    console.log(`    ${style.cyan("/mcp add sqlite [path]")}          - Connect built-in SQLite & Database Inspector MCP`);
+    console.log(`    ${style.cyan("/mcp add <name> <cmd> [args...]")} - Connect and save a new stdio MCP server`);
+    console.log(`    ${style.cyan("/mcp remove <name>")}              - Disconnect and remove an MCP server`);
+    console.log(`    ${style.cyan("/mcp reload")}                     - Reload all MCP configs and refresh tools`);
+    console.log();
+    return;
+  }
+
+  if (sub === "tools") {
+    const serverName = args[1];
+    if (serverName) {
+      const client = manager.getClient(serverName);
+      if (!client) {
+        console.log(style.red(`\n  MCP server '${serverName}' not found.\n`));
+        return;
+      }
+      CliFormatter.printMcpTools(serverName, client.getTools());
+    } else {
+      const clients = manager.listClients();
+      if (clients.length === 0) {
+        console.log(style.dim("\n  No MCP servers connected.\n"));
+        return;
+      }
+      for (const client of clients) {
+        CliFormatter.printMcpTools(client.name, client.getTools());
+      }
+    }
+    return;
+  }
+
+  if (sub === "resources") {
+    const serverName = args[1];
+    if (serverName) {
+      const client = manager.getClient(serverName);
+      if (!client) {
+        console.log(style.red(`\n  MCP server '${serverName}' not found.\n`));
+        return;
+      }
+      CliFormatter.printMcpResources(serverName, client.getResources());
+    } else {
+      const clients = manager.listClients();
+      if (clients.length === 0) {
+        console.log(style.dim("\n  No MCP servers connected.\n"));
+        return;
+      }
+      for (const client of clients) {
+        CliFormatter.printMcpResources(client.name, client.getResources());
+      }
+    }
+    return;
+  }
+
+  if (sub === "test" || sub === "ping") {
+    const serverName = args[1];
+    if (!serverName) {
+      console.log(style.yellow("\n  Usage: /mcp test <server-name>\n"));
+      return;
+    }
+    console.log(style.dim(`\n  Pinging MCP server '${serverName}'...`));
+    const result = await manager.pingServer(serverName);
+    if (result.success) {
+      console.log(style.green(`  ✓ PONG from '${serverName}' in ${result.durationMs}ms\n`));
+    } else {
+      console.log(style.red(`  ✕ Ping failed for '${serverName}': ${result.error || "Unknown error"}\n`));
+    }
+    return;
+  }
+
+  if (sub === "add") {
+    let name = args[1];
+    let command = args[2];
+    let serverArgs = args.slice(3);
+
+    // Preset auto-detection for chrome / chrome-devtools
+    if (name === "chrome" || name === "chrome-devtools") {
+      if (!command) {
+        command = process.execPath;
+        serverArgs = [CHROME_DEVTOOLS_MCP_SERVER_PATH];
+      }
+    }
+
+    // Preset auto-detection for web-search / search
+    if (name === "search" || name === "web-search" || name === "docs") {
+      if (!command) {
+        command = process.execPath;
+        serverArgs = [WEB_SEARCH_MCP_SERVER_PATH];
+      }
+    }
+
+    // Preset auto-detection for sqlite / db / sqlite-local
+    if (name === "sqlite" || name === "db" || name === "sqlite-local") {
+      const isCustomBinary = command && (command.startsWith("npx") || command.startsWith("python") || command.startsWith("docker"));
+      if (!isCustomBinary) {
+        const customDbPath = command; // if user typed '/mcp add sqlite ./data.db'
+        command = process.execPath;
+        serverArgs = customDbPath ? [SQLITE_MCP_SERVER_PATH, customDbPath] : [SQLITE_MCP_SERVER_PATH];
+      }
+    }
+
+    if (!name || !command) {
+      console.log(style.yellow("\n  Usage: /mcp add <name> <command> [args...]"));
+      console.log(style.dim("  Example: /mcp add chrome"));
+      console.log(style.dim("  Example: /mcp add search"));
+      console.log(style.dim("  Example: /mcp add sqlite [./mydb.sqlite]"));
+      console.log(style.dim("  Example: /mcp add postgres npx -y @modelcontextprotocol/server-postgres postgresql://localhost/mydb\n"));
+      return;
+    }
+
+    console.log(style.brand(`\n  Connecting to new MCP server '${name}' (${command})...`));
+    try {
+      const client = await manager.registerServer(name, {
+        type: "stdio",
+        command,
+        args: serverArgs,
+      });
+      manager.registerToolsIntoRouter(ctx.session.tools);
+
+      const configFile = manager.getDefaultConfigFile(ctx.session.cwd);
+      manager.saveServerToConfigFile(configFile, name, {
+        type: "stdio",
+        command,
+        args: serverArgs,
+      });
+
+      console.log(
+        style.green(
+          `  ✓ MCP server '${name}' connected successfully! (${client.getTools().length} tools discovered, saved to ${style.dim(configFile)})\n`
+        )
+      );
+    } catch (err) {
+      console.log(style.red(`  ✕ Failed to connect MCP server '${name}': ${err instanceof Error ? err.message : String(err)}\n`));
+    }
+    return;
+  }
+
+  if (sub === "remove" || sub === "rm" || sub === "delete") {
+    const name = args[1];
+    if (!name) {
+      console.log(style.yellow("\n  Usage: /mcp remove <server-name>\n"));
+      return;
+    }
+
+    const removed = await manager.removeServer(name, ctx.session.tools);
+    const configFile = manager.getDefaultConfigFile(ctx.session.cwd);
+    manager.removeServerFromConfigFile(configFile, name);
+
+    if (removed) {
+      console.log(style.green(`\n  ✓ MCP server '${name}' removed and disconnected.\n`));
+    } else {
+      console.log(style.yellow(`\n  MCP server '${name}' was not running.\n`));
+    }
+    return;
+  }
+
+  if (sub === "reload" || sub === "restart") {
+    console.log(style.brand("\n  Reloading all MCP configurations..."));
+    await manager.reload(ctx.session.tools);
+    console.log(style.green("  ✓ All MCP servers reloaded and tools refreshed.\n"));
+    return;
+  }
+
+  // Default: list servers
+  CliFormatter.printMcpServers(manager.listServers(), manager.getLoadedConfigFiles());
+}
+
+
+

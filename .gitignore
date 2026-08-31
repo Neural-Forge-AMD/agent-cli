@@ -12,10 +12,9 @@ build/
 # Groupy runtime, isolated worktrees & SQLite storage
 .groupy/
 .worktrees/
-*.db
-*.db-journal
-*.sqlite
-*.sqlite3
+*.db*
+*.sqlite*
+*.sqlite3*
 
 # Environment & secrets
 .env
@@ -36,3 +35,4 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+docs/

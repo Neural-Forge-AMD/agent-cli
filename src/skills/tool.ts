@@ -8,7 +8,8 @@ import type { SkillsLoader } from "./loader";
 export function createSkillTool(loader: SkillsLoader): Tool {
   return {
     name: "load_skill",
-    description: "Load detailed instructions and guidelines for a specialized skill workflow.",
+    description:
+      "Load detailed instructions and guidelines for a specialized skill workflow (e.g. scientific computing, bioinformatics, chemistry, quantum mechanics, machine learning, data science, frontend design, systematic debugging, TDD, security auditing).",
     parameters: {
       type: "object",
       properties: {
@@ -25,7 +26,7 @@ export function createSkillTool(loader: SkillsLoader): Tool {
 
       if (!loaded) {
         return {
-          output: `Skill '${skillName}' not found. Check available skills list.`,
+          output: `Skill '${skillName}' not found. Check available skills list in system prompt.`,
           isError: true,
         };
       }
