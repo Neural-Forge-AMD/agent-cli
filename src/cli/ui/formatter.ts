@@ -113,27 +113,7 @@ export function formatToolCard(toolName: string, args: Record<string, unknown>, 
 
 export class CliFormatter {
   static printBanner(info: { model: string; cwd: string; user?: string; role?: string; version?: string }): void {
-    const version = info.version || getCliVersion({ prefix: true });
-    const amber = "\x1b[38;2;224;175;104m";
-    const fg = "\x1b[38;2;232;232;232m";
-    const dim = "\x1b[38;2;122;122;122m";
-    const gray = "\x1b[38;2;139;139;144m";
-    const keyDim = "\x1b[38;2;106;106;106m";
-    const border = "\x1b[38;2;47;47;51m";
-    const reset = "\x1b[0m";
-
-    console.log();
-    console.log(`  ${border}┌────────────────────────────────────────────────────────────┐${reset}`);
-    console.log(`  ${border}│${reset}  ${fg}\x1b[1mGroupy Build Beta\x1b[0m ${dim}${version}${reset}${" ".repeat(Math.max(0, 39 - version.length))}${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${amber}\x1b[1mGroupy 4.5 is here!\x1b[0m                                       ${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${gray}Autonomous agent engine with skills, tools & worktree      ${border}│${reset}`);
-    console.log(`  ${border}│${reset}                                                            ${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${fg}New worktree${reset}${" ".repeat(36)}${keyDim}ctrl+w${reset}  ${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${fg}Resume session${reset}${" ".repeat(34)}${keyDim}ctrl+s${reset}  ${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${fg}Model: ${info.model}${reset}${" ".repeat(Math.max(0, 50 - info.model.length))}${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${fg}Quit${reset}${" ".repeat(44)}${keyDim}ctrl+q${reset}  ${border}│${reset}`);
-    console.log(`  ${border}└────────────────────────────────────────────────────────────┘${reset}`);
-    console.log();
+    BannerAnimator.renderStatic(info);
   }
 
   static printUpdateNotice(update: { currentVersion: string; latestVersion: string; packageName?: string }): void {
@@ -426,19 +406,20 @@ export class CliFormatter {
   }
 
   /**
-   * Formats a Claude Code style user prompt row (❯ chip + dark row background + white text).
+   * Formats a Claude Code style user prompt row (❯ chip + dark row background spanning width + white text).
    */
   static formatClaudeUserPrompt(text: string): string {
-    const chip = "\x1b[48;2;58;58;58m\x1b[38;2;138;138;138m ❯ \x1b[0m";
-    const body = `\x1b[48;2;58;58;58m\x1b[38;2;255;255;255m${text} \x1b[0m`;
-    return `${chip}${body}`;
+    const cols = typeof process.stdout?.columns === "number" ? process.stdout.columns : 80;
+    const width = Math.min(76, Math.max(48, cols - 6));
+    const pad = Math.max(1, width - (text.length + 5));
+    return `  \x1b[48;2;50;50;52m\x1b[38;2;145;145;150m ❯ \x1b[38;2;255;255;255m\x1b[1m${text}${" ".repeat(pad)}\x1b[0m`;
   }
 
   /**
    * Formats a Claude Code style assistant message turn (monospace light-slate text).
    */
   static formatClaudeAssistantResponse(text: string): string {
-    return `\x1b[38;2;192;202;245m${text}\x1b[0m`;
+    return `  \x1b[38;2;192;202;245m${text}\x1b[0m`;
   }
 
   /**

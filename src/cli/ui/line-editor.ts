@@ -2,6 +2,7 @@ import readline from "node:readline";
 import { c, style } from "./colors";
 import { AVAILABLE_SLASH_COMMANDS, type SlashCommandDef } from "../commands";
 import { FileSearchEngine } from "../../search/engine";
+import { CliFormatter } from "./formatter";
 
 export interface LineEditorOptions {
   promptSymbol?: string;
@@ -36,7 +37,7 @@ export class InteractiveLineEditor {
   private searchEngine = new FileSearchEngine();
 
   constructor(options: LineEditorOptions = {}) {
-    this.promptSymbol = options.promptSymbol || `${c.brandBold}❯${c.reset} `;
+    this.promptSymbol = options.promptSymbol || "  \x1b[38;2;192;202;245m❯\x1b[0m ";
     this.cwd = options.cwd || process.cwd();
     this.onInterrupt = options.onInterrupt;
   }
@@ -246,7 +247,11 @@ export class InteractiveLineEditor {
       const cleanupAndResolve = (result: string) => {
         clearMenu();
         process.stdin.removeListener("keypress", onKeypress);
-        process.stdout.write("\n");
+        if (result.trim().length > 0 && !result.startsWith("/")) {
+          process.stdout.write(`\r\x1b[2K${CliFormatter.formatClaudeUserPrompt(result)}\n\n`);
+        } else {
+          process.stdout.write("\n");
+        }
         resolve(result);
       };
 

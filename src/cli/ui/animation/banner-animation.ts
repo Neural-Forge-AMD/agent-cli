@@ -1,10 +1,8 @@
 /**
- * Animated Banner & Emblem Transition Engine.
- * Provides smooth, high-impact terminal startup animation for Groupy/Pikaa CLI.
+ * Animated Banner & Emblem Transition Engine (Grok Style).
+ * Provides responsive Grok Launch Card with perfect box border alignment for Groupy CLI.
  */
 
-import { c, style } from "../colors";
-import { shimmerText } from "../shimmer";
 import { getCliVersion } from "../../version";
 
 export interface BannerInfo {
@@ -21,57 +19,41 @@ export interface BannerAnimationOptions {
   onFinish?: () => void;
 }
 
-const LOGO_FRAMES = [
-  // Frame 1: Core ignition point
-  [
-    `                        `,
-    `                        `,
-    `           ▄▄           `,
-    `          ████          `,
-    `           ▀▀           `,
-    `                        `,
-    `                        `,
-  ],
-  // Frame 2: Expanding ring
-  [
-    `                        `,
-    `       ▄▄████▄▄         `,
-    `     ▄██▀    ▀██▄       `,
-    `     ███  ██  ███       `,
-    `     ▀██▄    ▄██▀       `,
-    `       ▀▀████▀▀         `,
-    `                        `,
-  ],
-  // Frame 3: Outer shield forming
-  [
-    `     ▄███▀▀  ▀▀███▄     `,
-    `   ▄██▀          ▀██▄   `,
-    `  ███   ▄████▄   ███    `,
-    `  ███  ██▌  ▐██  ███    `,
-    `  ███   ▀████▀   ███    `,
-    `   ▀██▄          ▄██▀   `,
-    `     ▀███▄▄  ▄▄███▀     `,
-  ],
-  // Frame 4: Final complete terracotta emblem
-  [
-    `       ▄▄████████▄▄     `,
-    `    ▄███▀▀      ▀▀███▄  `,
-    `  ▄██▀              ▀██▄`,
-    ` ███    ▄▄████▄▄      ███`,
-    `███   ▄██▀    ▀██▄     ▀▀`,
-    `███   ██▌  ██  ▐██████████████▄`,
-    `███   ██▌  ██  ▐██    ██  ██ ▀`,
-    `███   ▀██▄    ▄██▀     ▄▄`,
-    ` ███    ▀▀████▀▀      ███`,
-    `  ▀██▄              ▄██▀`,
-    `    ▀███▄▄      ▄▄███▀  `,
-    `       ▀▀████████▀▀     `,
-  ],
-];
+function getResponsiveWidth(): number {
+  const cols = typeof process.stdout?.columns === "number" ? process.stdout.columns : 80;
+  return Math.min(68, Math.max(48, cols - 6));
+}
+
+function formatBoxLine(
+  content: string,
+  innerWidth: number,
+  border = "\x1b[38;2;47;47;51m",
+  reset = "\x1b[0m"
+): string {
+  const visible = content.replace(/\x1b\[[0-9;]*m/g, "");
+  const pad = Math.max(0, innerWidth - visible.length);
+  return `  ${border}│${reset}${content}${" ".repeat(pad)}${border}│${reset}`;
+}
+
+function formatMenuLine(
+  label: string,
+  key = "",
+  innerWidth: number,
+  fg: string,
+  keyDim: string,
+  reset: string
+): string {
+  const left = `  ${fg}${label}${reset}`;
+  const right = key ? `${keyDim}${key}${reset}  ` : "  ";
+  const leftVis = `  ${label}`;
+  const rightVis = key ? `${key}  ` : "  ";
+  const spaceCount = Math.max(1, innerWidth - leftVis.length - rightVis.length);
+  return `${left}${" ".repeat(spaceCount)}${right}`;
+}
 
 export class BannerAnimator {
   /**
-   * Plays a smooth in-place animated reveal of the emblem, then renders the full banner.
+   * Plays a smooth in-place animated reveal of the Grok card, then renders the full banner.
    */
   static async play(
     info: BannerInfo,
@@ -85,58 +67,34 @@ export class BannerAnimator {
       return;
     }
 
-    const b = c.brandBold;
-    const r = c.reset;
-
-    // Fast reveal frames (50ms per step)
-    for (let f = 0; f < LOGO_FRAMES.length - 1; f++) {
-      const frameLines = LOGO_FRAMES[f]!;
-      process.stdout.write("\x1b[H\x1b[2J"); // clear screen
-      console.log("\n");
-      for (const line of frameLines) {
-        console.log(`  ${b}${line}${r}`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 55));
-    }
-
-    // Final render
-    process.stdout.write("\x1b[H\x1b[2J");
-    this.renderStatic(info, { withShimmerSweep: true });
+    this.renderStatic(info);
   }
 
   /**
-   * Renders the complete, beautiful static Groupy / Pikaa emblem banner.
+   * Renders the complete responsive Grok Launch Card banner.
    */
   static renderStatic(info: BannerInfo, options: { withShimmerSweep?: boolean } = {}): void {
-    const b = c.brandBold;
-    const r = c.reset;
-    const g = c.dim;
-    const t = c.bold;
-
-    const userDisplay = info.user ? style.cyan(info.user) : style.dim("Guest");
-    const roleBadge = info.role && info.role !== "default" ? ` [${style.yellow(info.role)}]` : "";
     const version = info.version || getCliVersion({ prefix: true });
-    const versionBadge = ` ${style.dim(version)}`;
+    const amber = "\x1b[38;2;224;175;104m";
+    const fg = "\x1b[38;2;232;232;232m";
+    const dim = "\x1b[38;2;122;122;122m";
+    const gray = "\x1b[38;2;139;139;144m";
+    const keyDim = "\x1b[38;2;106;106;106m";
+    const border = "\x1b[38;2;47;47;51m";
+    const reset = "\x1b[0m";
 
-    const titleText = options.withShimmerSweep
-      ? `${shimmerText("PIKAA AGENT", { sweepSeconds: 1.5 })}${versionBadge}`
-      : `${t}PIKAA AGENT${r}${versionBadge}`;
-
+    const width = getResponsiveWidth();
     console.log();
-    console.log(`  ${b}       ▄▄████████▄▄${r}`);
-    console.log(`  ${b}    ▄███▀▀      ▀▀███▄${r}`);
-    console.log(`  ${b}  ▄██▀              ▀██▄${r}           ${titleText}${roleBadge}`);
-    console.log(`  ${b} ███    ▄▄████▄▄      ███${r}          ${g}Autonomous Coding Engine${r}`);
-    console.log(`  ${b}███   ▄██▀    ▀██▄     ▀▀${r}          ${style.dim("User:")}  ${userDisplay}`);
-    console.log(`  ${b}███   ██▌  ██  ▐██████████████▄${r}    ${style.dim("Model:")} ${style.brand(info.model)}`);
-    console.log(`  ${b}███   ██▌  ██  ▐██    ██  ██ ▀${r}     ${style.dim("Dir:")}   ${style.dim(info.cwd)}`);
-    console.log(`  ${b}███   ▀██▄    ▄██▀     ▄▄${r}`);
-    console.log(`  ${b} ███    ▀▀████▀▀      ███${r}`);
-    console.log(`  ${b}  ▀██▄              ▄██▀${r}`);
-    console.log(`  ${b}    ▀███▄▄      ▄▄███▀${r}`);
-    console.log(`  ${b}       ▀▀████████▀▀${r}`);
-    console.log();
-    console.log(`  ${style.dim("Type /help for slash commands or /exit to quit.")}`);
+    console.log(`  ${border}┌${"─".repeat(width)}┐${reset}`);
+    console.log(formatBoxLine(`  ${fg}\x1b[1mGroupy Build Beta\x1b[0m ${dim}${version}${reset}`, width, border, reset));
+    console.log(formatBoxLine(`  ${amber}\x1b[1mGroupy is here!\x1b[0m`, width, border, reset));
+    console.log(formatBoxLine(`  ${gray}Autonomous agent engine with skills, tools & worktree${reset}`, width, border, reset));
+    console.log(formatBoxLine(``, width, border, reset));
+    console.log(formatBoxLine(formatMenuLine("New worktree", "ctrl+w", width, fg, keyDim, reset), width, border, reset));
+    console.log(formatBoxLine(formatMenuLine("Resume session", "ctrl+s", width, fg, keyDim, reset), width, border, reset));
+    console.log(formatBoxLine(formatMenuLine(`Model: ${info.model}`, "", width, fg, keyDim, reset), width, border, reset));
+    console.log(formatBoxLine(formatMenuLine("Quit", "ctrl+q", width, fg, keyDim, reset), width, border, reset));
+    console.log(`  ${border}└${"─".repeat(width)}┘${reset}`);
     console.log();
   }
 }
