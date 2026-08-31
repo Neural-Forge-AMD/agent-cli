@@ -21,6 +21,7 @@ import type { WorktreeManager } from "../worktree/manager";
 import type { CliRepl } from "./repl";
 import { CHROME_DEVTOOLS_MCP_SERVER_PATH } from "../mcp/servers/chrome-devtools";
 import { WEB_SEARCH_MCP_SERVER_PATH } from "../mcp/servers/web-search";
+import { SQLITE_MCP_SERVER_PATH } from "../mcp/servers/sqlite";
 
 export interface SlashCommandDef {
   name: string;
@@ -647,6 +648,7 @@ async function handleMcpCommand(ctx: CommandContext, args: string[]): Promise<vo
     console.log(`    ${style.cyan("/mcp test <server>")}              - Ping an MCP server and measure latency`);
     console.log(`    ${style.cyan("/mcp add chrome")}                 - Connect built-in Chrome DevTools browser automation`);
     console.log(`    ${style.cyan("/mcp add search")}                 - Connect built-in Cloud Web Search & Live Docs MCP`);
+    console.log(`    ${style.cyan("/mcp add sqlite [path]")}          - Connect built-in SQLite & Database Inspector MCP`);
     console.log(`    ${style.cyan("/mcp add <name> <cmd> [args...]")} - Connect and save a new stdio MCP server`);
     console.log(`    ${style.cyan("/mcp remove <name>")}              - Disconnect and remove an MCP server`);
     console.log(`    ${style.cyan("/mcp reload")}                     - Reload all MCP configs and refresh tools`);
@@ -735,11 +737,22 @@ async function handleMcpCommand(ctx: CommandContext, args: string[]): Promise<vo
       }
     }
 
+    // Preset auto-detection for sqlite / db / sqlite-local
+    if (name === "sqlite" || name === "db" || name === "sqlite-local") {
+      const isCustomBinary = command && (command.startsWith("npx") || command.startsWith("python") || command.startsWith("docker"));
+      if (!isCustomBinary) {
+        const customDbPath = command; // if user typed '/mcp add sqlite ./data.db'
+        command = process.execPath;
+        serverArgs = customDbPath ? [SQLITE_MCP_SERVER_PATH, customDbPath] : [SQLITE_MCP_SERVER_PATH];
+      }
+    }
+
     if (!name || !command) {
       console.log(style.yellow("\n  Usage: /mcp add <name> <command> [args...]"));
       console.log(style.dim("  Example: /mcp add chrome"));
       console.log(style.dim("  Example: /mcp add search"));
-      console.log(style.dim("  Example: /mcp add sqlite npx -y @modelcontextprotocol/server-sqlite ./db.sqlite\n"));
+      console.log(style.dim("  Example: /mcp add sqlite [./mydb.sqlite]"));
+      console.log(style.dim("  Example: /mcp add postgres npx -y @modelcontextprotocol/server-postgres postgresql://localhost/mydb\n"));
       return;
     }
 
