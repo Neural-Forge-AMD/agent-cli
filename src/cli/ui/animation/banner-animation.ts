@@ -1,6 +1,6 @@
 /**
  * Animated Banner & Emblem Transition Engine (Grok Style).
- * Provides crisp dot-matrix braille sweep and Grok Launch Card for Groupy CLI.
+ * Provides responsive Grok Launch Card with perfect box border alignment for Groupy CLI.
  */
 
 import { getCliVersion } from "../../version";
@@ -19,6 +19,38 @@ export interface BannerAnimationOptions {
   onFinish?: () => void;
 }
 
+function getResponsiveWidth(): number {
+  const cols = typeof process.stdout?.columns === "number" ? process.stdout.columns : 80;
+  return Math.min(68, Math.max(48, cols - 6));
+}
+
+function formatBoxLine(
+  content: string,
+  innerWidth: number,
+  border = "\x1b[38;2;47;47;51m",
+  reset = "\x1b[0m"
+): string {
+  const visible = content.replace(/\x1b\[[0-9;]*m/g, "");
+  const pad = Math.max(0, innerWidth - visible.length);
+  return `  ${border}│${reset}${content}${" ".repeat(pad)}${border}│${reset}`;
+}
+
+function formatMenuLine(
+  label: string,
+  key = "",
+  innerWidth: number,
+  fg: string,
+  keyDim: string,
+  reset: string
+): string {
+  const left = `  ${fg}${label}${reset}`;
+  const right = key ? `${keyDim}${key}${reset}  ` : "  ";
+  const leftVis = `  ${label}`;
+  const rightVis = key ? `${key}  ` : "  ";
+  const spaceCount = Math.max(1, innerWidth - leftVis.length - rightVis.length);
+  return `${left}${" ".repeat(spaceCount)}${right}`;
+}
+
 export class BannerAnimator {
   /**
    * Plays a smooth in-place animated reveal of the Grok card, then renders the full banner.
@@ -35,12 +67,11 @@ export class BannerAnimator {
       return;
     }
 
-    // Quick clear and render
     this.renderStatic(info);
   }
 
   /**
-   * Renders the complete Grok Launch Card banner.
+   * Renders the complete responsive Grok Launch Card banner.
    */
   static renderStatic(info: BannerInfo, options: { withShimmerSweep?: boolean } = {}): void {
     const version = info.version || getCliVersion({ prefix: true });
@@ -52,17 +83,18 @@ export class BannerAnimator {
     const border = "\x1b[38;2;47;47;51m";
     const reset = "\x1b[0m";
 
+    const width = getResponsiveWidth();
     console.log();
-    console.log(`  ${border}┌────────────────────────────────────────────────────────────┐${reset}`);
-    console.log(`  ${border}│${reset}  ${fg}\x1b[1mGroupy Build Beta\x1b[0m ${dim}${version}${reset}${" ".repeat(Math.max(0, 39 - version.length))}${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${amber}\x1b[1mGroupy is here!\x1b[0m                                           ${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${gray}Autonomous agent engine with skills, tools & worktree      ${border}│${reset}`);
-    console.log(`  ${border}│${reset}                                                            ${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${fg}New worktree${reset}${" ".repeat(36)}${keyDim}ctrl+w${reset}  ${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${fg}Resume session${reset}${" ".repeat(34)}${keyDim}ctrl+s${reset}  ${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${fg}Model: ${info.model}${reset}${" ".repeat(Math.max(0, 50 - info.model.length))}${border}│${reset}`);
-    console.log(`  ${border}│${reset}  ${fg}Quit${reset}${" ".repeat(44)}${keyDim}ctrl+q${reset}  ${border}│${reset}`);
-    console.log(`  ${border}└────────────────────────────────────────────────────────────┘${reset}`);
+    console.log(`  ${border}┌${"─".repeat(width)}┐${reset}`);
+    console.log(formatBoxLine(`  ${fg}\x1b[1mGroupy Build Beta\x1b[0m ${dim}${version}${reset}`, width, border, reset));
+    console.log(formatBoxLine(`  ${amber}\x1b[1mGroupy is here!\x1b[0m`, width, border, reset));
+    console.log(formatBoxLine(`  ${gray}Autonomous agent engine with skills, tools & worktree${reset}`, width, border, reset));
+    console.log(formatBoxLine(``, width, border, reset));
+    console.log(formatBoxLine(formatMenuLine("New worktree", "ctrl+w", width, fg, keyDim, reset), width, border, reset));
+    console.log(formatBoxLine(formatMenuLine("Resume session", "ctrl+s", width, fg, keyDim, reset), width, border, reset));
+    console.log(formatBoxLine(formatMenuLine(`Model: ${info.model}`, "", width, fg, keyDim, reset), width, border, reset));
+    console.log(formatBoxLine(formatMenuLine("Quit", "ctrl+q", width, fg, keyDim, reset), width, border, reset));
+    console.log(`  ${border}└${"─".repeat(width)}┘${reset}`);
     console.log();
   }
 }

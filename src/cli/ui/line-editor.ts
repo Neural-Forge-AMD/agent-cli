@@ -63,16 +63,6 @@ export class InteractiveLineEditor {
       let renderedMenuLines = 0;
       let popupDismissed = false;
 
-      const rule = "─".repeat(60);
-      const RULE_COLOR = "\x1b[38;2;80;80;88m";
-      const EFFORT_COLOR = "\x1b[38;2;224;175;104m";
-      const DIM = "\x1b[38;2;122;122;122m";
-      const GOLD = "\x1b[38;2;255;215;0m";
-      const RESET = "\x1b[0m";
-
-      console.log(`  ${EFFORT_COLOR}◉ xhigh${RESET} ${DIM}· /effort${RESET}`);
-      console.log(`  ${RULE_COLOR}${rule}${RESET}`);
-
       if (!globalRawMode && process.stdin.isTTY) {
         try {
           process.stdin.setRawMode(true);
@@ -257,8 +247,6 @@ export class InteractiveLineEditor {
         clearMenu();
         process.stdin.removeListener("keypress", onKeypress);
         process.stdout.write("\n");
-        console.log(`  ${RULE_COLOR}${rule}${RESET}`);
-        console.log(`  ${GOLD}⏵⏵ auto mode on${RESET}  ${DIM}(shift+tab to cycle) · ← for agents${RESET}\n`);
         resolve(result);
       };
 
