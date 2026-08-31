@@ -1,11 +1,9 @@
 /**
- * High-Performance Zero-Dependency Progressive Streaming Markdown & Code Syntax Highlighter.
- * Combines real-time token pass-through typewriter streaming with rich terminal typography.
- * 
+ * High-Performance Progressive Streaming Markdown & Code Syntax Highlighter.
  * Features:
+ * - Real-time zero-lag typewriter streaming
  * - Instant prefix detection (Headings, Lists, Quotes, Code Fences)
- * - Zero-lag streaming: words appear immediately without waiting for line completion
- * - Real-time inline style state tracking (bold, inline code, links)
+ * - Real-time inline style state tracking (bold, inline code)
  * - Syntax highlighting for code blocks (TS, JS, Python, Rust, Shell, Diff)
  */
 
@@ -46,20 +44,17 @@ export class MarkdownHighlighter {
     if (!chunk) return "";
 
     let output = "";
-    let i = 0;
 
-    while (i < chunk.length) {
+    for (let i = 0; i < chunk.length; i++) {
       const char = chunk[i]!;
 
       if (char === "\n") {
         output += this.handleNewline();
-        i++;
         continue;
       }
 
       if (this.inDiffBlock) {
         this.diffBuffer.push(char);
-        i++;
         continue;
       }
 
@@ -70,13 +65,16 @@ export class MarkdownHighlighter {
         if (this.canResolvePrefix(this.prefixBuffer)) {
           output += this.resolveAndEmitPrefix();
         }
-        i++;
         continue;
       }
 
-      // Inside normal line or code block -> stream character live
+      if (this.inCodeBlock) {
+        output += this.highlightCodeSnippet(char);
+        continue;
+      }
+
+      // Inside normal line -> stream character live
       output += this.processInlineChar(char);
-      i++;
     }
 
     return output;
@@ -99,7 +97,7 @@ export class MarkdownHighlighter {
       this.inInlineCode = false;
     }
     if (this.inCodeBlock && !this.inDiffBlock) {
-      output += `\n  ${style.dim("└" + "─".repeat(60))}\n`;
+      output += `\n  \x1b[38;2;86;95;137m└${"─".repeat(56)}\x1b[0m\n`;
       this.inCodeBlock = false;
     }
     this.prefixBuffer = "";
@@ -108,21 +106,18 @@ export class MarkdownHighlighter {
   }
 
   private canResolvePrefix(buf: string): boolean {
-    // 1. Code fence check: ```lang requires newline before triggering or 3 backticks with space
     if (buf.startsWith("```")) {
-      return false; // wait for newline to capture full language identifier
+      return false; // wait for newline to capture full language identifier or close
     }
-    // 2. Headings: # , ## , ###
+    if (this.inCodeBlock) {
+      if (!buf.startsWith("`")) return true;
+      return false;
+    }
     if (/^#{1,3}\s/.test(buf)) return true;
-    // 3. Lists: - , * , 1.
     if (/^\s*[-*]\s/.test(buf) || /^\s*\d+\.\s/.test(buf)) return true;
-    // 4. Quotes: >
     if (/^>\s/.test(buf)) return true;
-    // 5. If it starts with non-prefix characters, resolve immediately (e.g. regular text)
     if (/^[A-Za-z0-9_"'(\[\{]/.test(buf) && !/^\d+\./.test(buf)) return true;
-    // 6. Max prefix lookahead fallback
     if (buf.length >= 6) return true;
-
     return false;
   }
 
@@ -163,7 +158,9 @@ export class MarkdownHighlighter {
         this.diffBuffer.push("\n");
       }
     } else {
-      out += "\n";
+      if (!out.endsWith("\n")) {
+        out += "\n";
+      }
     }
 
     this.isAtLineStart = true;
@@ -188,46 +185,48 @@ export class MarkdownHighlighter {
           this.diffBuffer = [];
           return "";
         }
-        const langBadge = this.currentLanguage ? ` ${style.brandBold(this.currentLanguage.toUpperCase())} ` : "";
-        return `\n  ${style.dim("┌──")}${langBadge}${style.dim("─".repeat(Math.max(10, 60 - (this.currentLanguage.length + 6))))}\n  ${style.dim("│")} `;
+        const langBadge = this.currentLanguage ? ` \x1b[1m\x1b[38;2;224;175;104m${this.currentLanguage.toUpperCase()}\x1b[0m ` : "";
+        return `\n  \x1b[38;2;86;95;137m┌──${langBadge}${"─".repeat(Math.max(8, 54 - (this.currentLanguage.length + 6)))}\x1b[0m\n`;
       } else {
         this.inCodeBlock = false;
         this.currentLanguage = "";
-        return `  ${style.dim("└" + "─".repeat(60))}\n`;
+        return `  \x1b[38;2;86;95;137m└${"─".repeat(56)}\x1b[0m\n`;
       }
     }
 
-    // 2. Code Block body line prefix
+    // Inside code block (and not closing fence)
     if (this.inCodeBlock) {
-      return `  ${style.dim("│")} ` + this.highlightCodeSnippet(raw);
+      return `  \x1b[38;2;86;95;137m│\x1b[0m ` + this.highlightCodeSnippet(raw);
     }
 
-    // 3. Headings
+    // 2. Headings
     if (/^#\s+/.test(raw)) {
-      return `${style.brandBold("▌ ")}${c.bold}`;
+      return `\x1b[1m\x1b[38;2;122;162;247m▌ ${c.bold}`;
     }
     if (/^##\s+/.test(raw)) {
-      return `${c.brightCyan}${style.bold("■ ")}`;
+      return `\x1b[1m\x1b[38;2;122;162;247m■ ${c.bold}`;
     }
     if (/^###\s+/.test(raw)) {
-      return `${style.bold("▲ ")}`;
+      return `\x1b[1m\x1b[38;2;122;162;247m▲ ${c.bold}`;
     }
 
-    // 4. Blockquotes
+    // 3. Blockquotes
     if (/^>\s*/.test(raw)) {
-      return `  ${style.brand("│")} ${style.italic(style.dim(""))}`;
+      return `\x1b[38;2;205;105;74m│\x1b[0m \x1b[3m\x1b[38;2;139;139;144m`;
     }
 
-    // 5. Bullet list items (- or *)
+    // 4. Bullet list items (- or *)
     const bulletMatch = raw.match(/^(\s*)([-*])\s+/);
     if (bulletMatch) {
-      return `${bulletMatch[1]}${style.brand("•")} `;
+      const indent = bulletMatch[1] || "";
+      return `${indent}\x1b[38;2;205;105;74m•\x1b[0m `;
     }
 
-    // 6. Numbered list items (1. 2.)
+    // 5. Numbered list items (1. 2.)
     const numMatch = raw.match(/^(\s*)(\d+)\.\s+/);
     if (numMatch) {
-      return `${numMatch[1]}${c.cyan}${numMatch[2]}.${c.reset} `;
+      const indent = numMatch[1] || "";
+      return `${indent}\x1b[38;2;122;162;247m${numMatch[2]}.\x1b[0m `;
     }
 
     // Default regular body line
@@ -242,20 +241,20 @@ export class MarkdownHighlighter {
     if (char === "`") {
       if (!this.inInlineCode) {
         this.inInlineCode = true;
-        return `${c.dim}${c.cyan} `;
+        return `\x1b[48;2;40;40;45m\x1b[38;2;115;218;202m `;
       } else {
         this.inInlineCode = false;
-        return ` ${c.reset}`;
+        return ` \x1b[0m`;
       }
     }
 
     if (char === "*" && !this.inInlineCode) {
       if (!this.inBold) {
         this.inBold = true;
-        return c.bold;
+        return `\x1b[1m\x1b[38;2;255;255;255m`;
       } else {
         this.inBold = false;
-        return c.reset;
+        return `\x1b[0m`;
       }
     }
 
@@ -272,14 +271,15 @@ export class MarkdownHighlighter {
 
   private highlightCodeSnippet(snippet: string): string {
     let code = snippet;
-    code = code.replace(/\b(\d+)\b/g, `${c.brightYellow}$1${c.reset}`);
+    code = code.replace(/\b(\d+)\b/g, `\x1b[38;2;255;158;100m$1\x1b[0m`);
     const keywords = [
       "const", "let", "var", "function", "return", "if", "else", "for", "while",
-      "import", "from", "export", "default", "class", "async", "await", "try", "catch"
+      "import", "from", "export", "default", "class", "async", "await", "try", "catch",
+      "type", "interface", "public", "private", "readonly"
     ];
     for (const kw of keywords) {
       const regex = new RegExp(`\\b(${kw})\\b`, "g");
-      code = code.replace(regex, `${c.magenta}${c.bold}$1${c.reset}`);
+      code = code.replace(regex, `\x1b[1m\x1b[38;2;187;154;247m$1\x1b[0m`);
     }
     return code;
   }

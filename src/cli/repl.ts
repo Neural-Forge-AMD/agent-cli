@@ -127,6 +127,7 @@ export class CliRepl {
           }
           if (!this.currentTurnHasOutput && msg.delta.trim().length > 0) {
             this.currentTurnHasOutput = true;
+            process.stdout.write("  ");
           }
           this.turnCharsOut += msg.delta.length;
           if (this.currentTurnHasOutput) {
