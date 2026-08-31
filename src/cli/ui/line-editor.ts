@@ -2,6 +2,7 @@ import readline from "node:readline";
 import { c, style } from "./colors";
 import { AVAILABLE_SLASH_COMMANDS, type SlashCommandDef } from "../commands";
 import { FileSearchEngine } from "../../search/engine";
+import { CliFormatter } from "./formatter";
 
 export interface LineEditorOptions {
   promptSymbol?: string;
