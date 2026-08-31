@@ -12,6 +12,7 @@ import { ClaudeThinking, CLAUDE_GLYPHS, CLAUDE_VERBS } from "../src/ui/component
 import { ClaudeToolCall } from "../src/ui/components/claude/claude-tool-call";
 import { ClaudeTodoList } from "../src/ui/components/claude/claude-todo-list";
 import { ClaudeDiff } from "../src/ui/components/claude/claude-diff";
+import { ClaudePrompt } from "../src/ui/components/claude/claude-prompt";
 
 describe("Claude Message & Claude Thinking UI Integration", () => {
   it("should define authentic claude_sparkle spinner variant matching brainless specification", () => {
@@ -66,6 +67,7 @@ describe("Claude Message & Claude Thinking UI Integration", () => {
     expect(typeof ClaudeToolCall).toBe("function");
     expect(typeof ClaudeTodoList).toBe("function");
     expect(typeof ClaudeDiff).toBe("function");
+    expect(typeof ClaudePrompt).toBe("function");
   });
 
   it("should format task progress plan using Claude todo list grammar (⎿ ✔ / ◼ / ◻)", () => {
