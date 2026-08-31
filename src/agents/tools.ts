@@ -27,8 +27,8 @@ export function createMultiAgentTools(spawner: AgentSpawner): Tool[] {
         },
         role: {
           type: "string",
-          description: "Specialized role: 'security-auditor', 'reviewer', 'researcher', 'tester', 'planner', or 'default'.",
-          enum: ["default", "reviewer", "researcher", "tester", "planner", "security-auditor"],
+          description: "Specialized role: 'frontend-designer', 'security-auditor', 'reviewer', 'researcher', 'tester', 'planner', or 'default'.",
+          enum: ["default", "reviewer", "researcher", "tester", "planner", "security-auditor", "frontend-designer"],
         },
         model: {
           type: "string",

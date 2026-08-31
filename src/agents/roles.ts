@@ -82,6 +82,16 @@ export class AgentRoleRegistry {
       nicknameCandidates: ["Aegis", "Strix", "Warden", "Sentinel", "Guardian"],
       allowedToolNames: ["read_file", "list_dir", "shell", "apply_patch", "write_file"],
     });
+
+    // 7. Frontend Designer & UI Engineer (Claude Code frontend-design)
+    this.registerRole({
+      name: "frontend-designer",
+      description: "Autonomous frontend designer-engineer specializing in high-craft, distinctive UI design systems, avoiding generic AI templates.",
+      systemPrompt:
+        "You are an Elite Frontend Designer-Engineer (Claude Code frontend-design). You craft distinctive, production-grade user interfaces with intentional aesthetic direction, strong typographic hierarchy, bespoke color stories, and purposeful micro-interactions without generic AI UI slop.",
+      nicknameCandidates: ["Artisan", "Pixel", "Canvas", "Palette", "Studio"],
+      allowedToolNames: ["read_file", "list_dir", "shell", "apply_patch", "write_file"],
+    });
   }
 
   registerRole(role: AgentRole): void {

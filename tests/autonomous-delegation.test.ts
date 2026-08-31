@@ -8,8 +8,12 @@ import { SkillsLoader } from "../src/skills/loader";
 import { MemoryStore } from "../src/memories/store";
 import { AgentSpawner } from "../src/agents/spawner";
 import { registerMultiAgentTools } from "../src/agents/tools";
-import { ModelClient } from "../src/client/model-client";
-import type { ModelClientSession, ModelSamplingParams, StreamChunkEvent } from "../src/client/types";
+import {
+  ModelClient,
+  type ModelClientSession,
+  type ModelSamplingParams,
+  type StreamChunkEvent,
+} from "../src";
 
 describe("Autonomous Skills & Sub-Agent Delegation (Antigravity/Claude Code pattern)", () => {
   let testDir: string;
@@ -111,7 +115,7 @@ describe("Autonomous Skills & Sub-Agent Delegation (Antigravity/Claude Code patt
 
             if (lastItem && lastItem.type === "function_call_output") {
               const match = lastItem.output?.match(/sub-agent '([^']+)'/i);
-              if (match) {
+              if (match && match[1]) {
                 capturedAgentId = match[1];
 
                 yield {
@@ -190,4 +194,17 @@ describe("Autonomous Skills & Sub-Agent Delegation (Antigravity/Claude Code patt
     expect(spawnCall).toBeDefined();
     expect(waitCall).toBeDefined();
   });
+
+  it("should discover and load built-in frontend-design skill with DFII rubric and aesthetic mandate", () => {
+    const skills = skillsLoader.listSkills(testDir);
+    const names = skills.map((s) => s.name);
+    expect(names).toContain("frontend-design");
+
+    const loaded = skillsLoader.loadSkill(testDir, "frontend-design");
+    expect(loaded).not.toBeNull();
+    expect(loaded?.instructions).toContain("Design Feasibility & Impact Index (DFII)");
+    expect(loaded?.instructions).toContain("Differentiation Anchor");
+    expect(loaded?.instructions).toContain("Typography");
+  });
 });
+
