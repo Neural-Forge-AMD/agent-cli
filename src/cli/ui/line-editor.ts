@@ -149,43 +149,33 @@ export class InteractiveLineEditor {
           const visibleMatches = slashMatches.slice(scrollTop, scrollTop + maxVisible);
 
           const menuLines: string[] = [];
-          menuLines.push(`  ${style.dim("┌" + "─".repeat(BOX_WIDTH) + "┐")}`);
+          const rule = "─".repeat(Math.min(BOX_WIDTH, 68));
+          const RULE_COLOR = "\x1b[38;2;80;80;88m";
+          const ACTIVE_COLOR = "\x1b[38;2;225;225;225m";
+          const INACTIVE_COLOR = "\x1b[38;2;139;139;144m";
+          const RESET = "\x1b[0m";
+
+          menuLines.push(`  ${RULE_COLOR}${rule}${RESET}`);
 
           for (let i = 0; i < visibleMatches.length; i++) {
             const cmd = visibleMatches[i]!;
             const actualIdx = scrollTop + i;
             const isSelected = actualIdx === selectedIndex;
-            const marker = isSelected ? style.brand("❯") : " ";
+            const marker = isSelected ? `${ACTIVE_COLOR}❯${RESET}` : " ";
 
-            const rawName = cmd.name.padEnd(13).slice(0, 13);
-            const rawDesc = cmd.description.length > 50
-              ? cmd.description.slice(0, 47) + "..."
-              : cmd.description.padEnd(50);
+            const rawName = cmd.name.padEnd(16).slice(0, 16);
+            const rawDesc = cmd.description.length > 48
+              ? cmd.description.slice(0, 45) + "..."
+              : cmd.description;
 
-            const coloredName = isSelected ? style.brandBold(rawName) : style.cyan(rawName);
-            const coloredDesc = isSelected ? style.bold(rawDesc) : style.dim(rawDesc);
-
-            menuLines.push(`  ${style.dim("│")} ${marker} ${coloredName}  ${coloredDesc}  ${style.dim("│")}`);
+            if (isSelected) {
+              menuLines.push(`  ${marker} \x1b[1m${ACTIVE_COLOR}${rawName}${RESET}  \x1b[1m${ACTIVE_COLOR}${rawDesc}${RESET}`);
+            } else {
+              menuLines.push(`  ${marker} ${INACTIVE_COLOR}${rawName}${RESET}  ${INACTIVE_COLOR}${rawDesc}${RESET}`);
+            }
           }
 
-          // Dynamic footer showing remaining commands above/below (Codex-rs pattern)
-          let footerMsg = "";
-          const moreAbove = scrollTop;
-          const moreBelow = Math.max(0, slashMatches.length - (scrollTop + visibleMatches.length));
-
-          if (moreAbove > 0 && moreBelow > 0) {
-            footerMsg = `  ... ${moreAbove} more above, ${moreBelow} more below (↑/↓ to scroll)`;
-          } else if (moreBelow > 0) {
-            footerMsg = `  ... and ${moreBelow} more commands (use arrows to scroll)`;
-          } else if (moreAbove > 0) {
-            footerMsg = `  ... and ${moreAbove} more commands above (use arrows to scroll)`;
-          } else {
-            footerMsg = `  ${slashMatches.length} commands (↑/↓ to navigate • Tab to select)`;
-          }
-
-          const footerPadded = footerMsg.padEnd(BOX_WIDTH).slice(0, BOX_WIDTH);
-          menuLines.push(`  ${style.dim("│")}${style.dim(footerPadded)}${style.dim("│")}`);
-          menuLines.push(`  ${style.dim("└" + "─".repeat(BOX_WIDTH) + "┘")}`);
+          menuLines.push(`  ${RULE_COLOR}${rule}${RESET}`);
 
           // Render menu below prompt
           for (const line of menuLines) {
