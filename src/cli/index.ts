@@ -23,6 +23,7 @@ import { AuthClient, CredentialsStore } from "../auth";
 import { CliRepl } from "./repl";
 import { style } from "./ui/colors";
 import { MarkdownHighlighter } from "./ui/markdown";
+import { getCliVersion, getPackageMetadata } from "./version";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -93,7 +94,8 @@ async function main(): Promise<void> {
     } else if (arg === "--mcp") {
       mcpConfigFile = args[++i];
     } else if (arg === "--version" || arg === "-v" || arg === "version") {
-      console.log(`pikaa v0.2.5`);
+      const meta = getPackageMetadata();
+      console.log(`${meta.name} v${meta.version}`);
       process.exit(0);
     } else if (arg === "--help" || arg === "-h") {
       printCliHelp();

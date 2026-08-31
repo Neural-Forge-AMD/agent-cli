@@ -5,12 +5,14 @@
 
 import { c, style } from "../colors";
 import { shimmerText } from "../shimmer";
+import { getCliVersion } from "../../version";
 
 export interface BannerInfo {
   model: string;
   cwd: string;
   user?: string;
   role?: string;
+  version?: string;
 }
 
 export interface BannerAnimationOptions {
@@ -113,10 +115,12 @@ export class BannerAnimator {
 
     const userDisplay = info.user ? style.cyan(info.user) : style.dim("Guest");
     const roleBadge = info.role && info.role !== "default" ? ` [${style.yellow(info.role)}]` : "";
+    const version = info.version || getCliVersion({ prefix: true });
+    const versionBadge = ` ${style.dim(version)}`;
 
     const titleText = options.withShimmerSweep
-      ? shimmerText("PIKAA AGENT", { sweepSeconds: 1.5 })
-      : `${t}PIKAA AGENT${r}`;
+      ? `${shimmerText("PIKAA AGENT", { sweepSeconds: 1.5 })}${versionBadge}`
+      : `${t}PIKAA AGENT${r}${versionBadge}`;
 
     console.log();
     console.log(`  ${b}       ▄▄████████▄▄${r}`);

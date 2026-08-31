@@ -3,6 +3,7 @@ import { parsePatch, renderDiff } from "./diff";
 import { formatDuration } from "./spinner";
 import type { PlanItem } from "../../protocol/events";
 import { BannerAnimator, type BannerInfo, type BannerAnimationOptions } from "./animation/banner-animation";
+import { getCliVersion } from "../version";
 
 export function renderGroupyBanner(info: BannerInfo, options?: BannerAnimationOptions): void {
   BannerAnimator.renderStatic(info);
@@ -100,18 +101,19 @@ export function formatToolCard(toolName: string, args: Record<string, unknown>, 
 }
 
 export class CliFormatter {
-  static printBanner(info: { model: string; cwd: string; user?: string; role?: string }): void {
+  static printBanner(info: { model: string; cwd: string; user?: string; role?: string; version?: string }): void {
     const b = c.brandBold;
     const r = c.reset;
     const g = c.dim;
     const t = c.bold;
 
     const userDisplay = info.user ? style.cyan(info.user) : style.dim("Guest");
+    const version = info.version || getCliVersion({ prefix: true });
 
     console.log();
     console.log(`  ${b}       ▄▄████████▄▄${r}`);
     console.log(`  ${b}    ▄███▀▀      ▀▀███▄${r}`);
-    console.log(`  ${b}  ▄██▀              ▀██▄${r}           ${t}PIKAA AGENT${r}`);
+    console.log(`  ${b}  ▄██▀              ▀██▄${r}           ${t}PIKAA AGENT${r} ${style.dim(version)}`);
     console.log(`  ${b} ███    ▄▄████▄▄      ███${r}          ${g}Autonomous Coding Engine${r}`);
     console.log(`  ${b}███   ▄██▀    ▀██▄     ▀▀${r}          ${style.dim("User:")}  ${userDisplay}`);
     console.log(`  ${b}███   ██▌  ██  ▐██████████████▄${r}    ${style.dim("Model:")} ${style.brand(info.model)}`);
