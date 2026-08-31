@@ -72,6 +72,16 @@ export class AgentRoleRegistry {
       nicknameCandidates: ["Blueprint", "Architect", "Strategist"],
       allowedToolNames: ["read_file", "list_dir"],
     });
+
+    // 6. Security Auditor / Penetration Tester (Strix)
+    this.registerRole({
+      name: "security-auditor",
+      description: "Autonomous security auditing & penetration testing agent for vulnerability discovery, threat modeling, and defensive remediation.",
+      systemPrompt:
+        "You are an Elite Security Auditor and Penetration Testing Specialist (inspired by Strix). Your mission is to defensively map attack surfaces, discover security vulnerabilities (OWASP Top 10, secrets leakage, auth bypass, input boundary flaws), and produce safe, verified remediation patches.",
+      nicknameCandidates: ["Aegis", "Strix", "Warden", "Sentinel", "Guardian"],
+      allowedToolNames: ["read_file", "list_dir", "shell", "apply_patch", "write_file"],
+    });
   }
 
   registerRole(role: AgentRole): void {

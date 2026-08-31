@@ -24,6 +24,7 @@ import { CliRepl } from "./repl";
 import { style } from "./ui/colors";
 import { MarkdownHighlighter } from "./ui/markdown";
 import { getCliVersion, getPackageMetadata } from "./version";
+import { handleSlashCommand } from "./commands";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -168,6 +169,28 @@ async function main(): Promise<void> {
 
   // 4. Single-shot prompt mode vs Interactive REPL
   if (singlePrompt) {
+    if (
+      singlePrompt.startsWith("/") ||
+      singlePrompt.startsWith("security") ||
+      singlePrompt.startsWith("scan") ||
+      singlePrompt.startsWith("audit") ||
+      singlePrompt.startsWith("skills") ||
+      singlePrompt.startsWith("whoami") ||
+      singlePrompt.startsWith("roles")
+    ) {
+      const slashInput = singlePrompt.startsWith("/") ? singlePrompt : `/${singlePrompt}`;
+      const handled = await handleSlashCommand(slashInput, {
+        session,
+        spawner,
+        mcpManager,
+        storageManager,
+        skillsLoader,
+        memoryStore,
+        worktreeManager,
+      });
+      if (handled) process.exit(0);
+    }
+
     console.log(style.dim(`[Groupy single-shot execution for: "${singlePrompt}"]\n`));
     const highlighter = new MarkdownHighlighter();
     session.onEvent((event) => {

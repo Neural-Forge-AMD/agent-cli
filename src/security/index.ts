@@ -5,3 +5,4 @@ export * from "./kernel/manager";
 export * from "./kernel/windows";
 export * from "./kernel/linux";
 export * from "./kernel/macos";
+export * from "./scanner";

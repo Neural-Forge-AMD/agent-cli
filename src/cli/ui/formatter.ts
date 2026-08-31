@@ -152,6 +152,54 @@ export class CliFormatter {
     console.log();
   }
 
+  static printSecurityReport(report: {
+    scannedFiles: number;
+    findings: Array<{
+      id: string;
+      category: string;
+      severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+      filePath: string;
+      lineNumber: number;
+      snippet: string;
+      description: string;
+      recommendation: string;
+    }>;
+    durationMs: number;
+    summary: { critical: number; high: number; medium: number; low: number };
+  }): void {
+    console.log();
+    console.log(`  ${style.brandBold("🛡️  Codebase Security & Vulnerability Assessment (Strix)")}`);
+    console.log(`  ${style.dim(`Scanned ${report.scannedFiles} files in ${(report.durationMs).toFixed(1)}ms`)}`);
+    console.log();
+
+    if (report.findings.length === 0) {
+      console.log(`  ${style.green("✓ No critical vulnerabilities or exposed secrets detected.")}\n`);
+      return;
+    }
+
+    const { critical, high, medium, low } = report.summary;
+    const stats: string[] = [];
+    if (critical > 0) stats.push(style.red(`${critical} CRITICAL`));
+    if (high > 0) stats.push(style.yellow(`${high} HIGH`));
+    if (medium > 0) stats.push(style.cyan(`${medium} MEDIUM`));
+    if (low > 0) stats.push(style.dim(`${low} LOW`));
+
+    console.log(`  ${style.bold("Findings Summary:")} ${stats.join(style.dim(" · "))}`);
+    console.log(`  ${style.dim("─".repeat(64))}`);
+
+    for (let i = 0; i < report.findings.length; i++) {
+      const f = report.findings[i]!;
+      const sevColor = f.severity === "CRITICAL" ? style.red : f.severity === "HIGH" ? style.yellow : style.cyan;
+      console.log(`\n  [${style.bold(String(i + 1))}] [${sevColor(f.severity)}] ${style.bold(f.category)}: ${f.description}`);
+      console.log(`      ${style.dim("Location:")} ${style.cyan(f.filePath)}:${style.yellow(String(f.lineNumber))}`);
+      console.log(`      ${style.dim("Snippet:")}  ${style.dim(f.snippet)}`);
+      console.log(`      ${style.green("Remedy:")}   ${f.recommendation}`);
+    }
+
+    console.log(`\n  ${style.dim("─".repeat(64))}`);
+    console.log(`  ${style.dim("To auto-fix these issues, run:")} ${style.cyan("@spawn security-auditor \"Fix all identified vulnerabilities\"")}\n`);
+  }
+
   static formatToolCall(toolName: string, args: Record<string, unknown>): void {
     const argsSummary = Object.entries(args)
       .map(([k, v]) => {

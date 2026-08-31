@@ -6,9 +6,11 @@ import { c, style } from "./ui/colors";
 import { InteractiveLineEditor } from "./ui/line-editor";
 import { formatDuration } from "./ui/spinner";
 import { AsciiAnimation, ALL_ANIMATION_VARIANTS, type AnimationVariant } from "./ui/animation";
+import { CliFormatter } from "./ui/formatter";
 import { estimateTotalTokens } from "../context/compactor";
 import { CredentialsStore } from "../auth/store";
 import { AuthClient } from "../auth/oauth";
+import { runSecurityScan } from "../security/scanner";
 import type { Session } from "../session/session";
 import type { AgentSpawner } from "../agents/spawner";
 import type { McpManager } from "../mcp/manager";
@@ -36,6 +38,7 @@ export const AVAILABLE_SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "/worktrees", description: "List active isolated Git Worktrees" },
   { name: "/sessions", description: "List saved past sessions from SQLite store" },
   { name: "/roles", description: "List available agent roles & nicknames" },
+  { name: "/security", description: "Scan codebase for vulnerabilities & secrets (Strix)" },
   { name: "/agents", description: "List active sub-agents & execution status" },
   { name: "/mcp", description: "List connected Model Context Protocol servers" },
   { name: "/animate", description: "Preview 36-frame ASCII art animation variants" },
@@ -135,6 +138,13 @@ export async function handleSlashCommand(
 
     case "/sessions":
       printSessions(ctx);
+      return true;
+
+    case "/security":
+    case "/audit":
+    case "/vuln":
+    case "/pentest":
+      await handleSecurityCommand(ctx, args);
       return true;
 
     case "/animate":
@@ -566,4 +576,45 @@ async function handleAnimate(variantName?: string): Promise<void> {
   await anim.play(2000);
   console.log();
 }
+
+async function handleSecurityCommand(ctx: CommandContext, args: string[]): Promise<void> {
+  const sub = (args[0] || "scan").toLowerCase();
+  const target = args[1] || ctx.session.cwd;
+
+  if (sub === "help") {
+    console.log();
+    console.log(style.bold("  🛡️  Security & Vulnerability Assessment Commands (Strix):"));
+    console.log(`    ${style.cyan("/security scan")}          - Scan repository for exposed secrets & OWASP Top 10 vulnerabilities`);
+    console.log(`    ${style.cyan("/security audit <path>")}  - Run security audit on a specific file or directory`);
+    console.log(`    ${style.cyan("/security fix")}           - Spawn security-auditor sub-agent to remediate vulnerabilities`);
+    console.log();
+    return;
+  }
+
+  if (sub === "fix") {
+    const spawner = ctx.spawner;
+    if (!spawner) {
+      console.log(style.yellow("\n  Multi-agent spawner not active. Running in main session...\n"));
+      await ctx.session.submit({
+        type: "TurnInput",
+        request: { text: "Perform a security audit, find all vulnerabilities and exposed secrets, and apply safe code patches to remediate them." },
+      });
+      return;
+    }
+    console.log(style.brand("\n  🛡️  Spawning autonomous security-auditor sub-agent..."));
+    const handle = await spawner.spawnAgent({
+      taskName: "security_remediation",
+      message: "Perform a security audit across the codebase, identify all vulnerabilities and exposed secrets, and apply safe code patches to remediate them.",
+      role: "security-auditor",
+    });
+    console.log(style.green(`  ✓ Sub-agent '${handle.nickname}' (${handle.id}) spawned with role: ${handle.role}\n`));
+    return;
+  }
+
+  // Default: scan or audit
+  console.log(style.brand(`\n  🛡️  Running static security scan on: ${style.dim(target)} ...`));
+  const report = await runSecurityScan(target);
+  CliFormatter.printSecurityReport(report);
+}
+
 
