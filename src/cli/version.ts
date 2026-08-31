@@ -77,7 +77,7 @@ export function getPackageMetadata(): PackageMetadata {
   // 3. Safe fallback if running in standalone binary where package.json is absent
   cachedMetadata = {
     name: "pikaa",
-    version: "0.2.5",
+    version: "0.3.0",
   };
   return cachedMetadata;
 }

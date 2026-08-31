@@ -49,7 +49,7 @@ describe("CLI Version Auto-Detection Subsystem", () => {
       });
 
       expect(captured).toContain("Groupy Build Beta");
-      expect(captured).toContain("v0.2.5");
+      expect(captured).toContain("v0.3.0");
     } finally {
       console.log = originalLog;
     }
