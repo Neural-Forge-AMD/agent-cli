@@ -297,7 +297,13 @@ export class DefaultModelClientSession implements ModelClientSession {
         }
 
         attempt++;
-        const backoffMs = Math.min(300 * Math.pow(1.5, attempt) + Math.random() * 200, 5000);
+        const isTestEnv =
+          process.env.NODE_ENV === "test" ||
+          process.env.BUN_ENV === "test" ||
+          Boolean(process.env.GROUPY_FAST_RETRY);
+        const backoffMs = isTestEnv
+          ? Math.min(25 * attempt, 100)
+          : Math.min(300 * Math.pow(1.5, attempt) + Math.random() * 200, 5000);
         yield {
           type: "warning",
           message: `Model API returned HTTP ${response.status}. Retrying attempt ${attempt}/${maxRetries} in ${Math.round(backoffMs)}ms...`,
@@ -321,7 +327,13 @@ export class DefaultModelClientSession implements ModelClientSession {
           return;
         }
 
-        const backoffMs = Math.min(300 * Math.pow(1.5, attempt) + Math.random() * 200, 5000);
+        const isTestEnv =
+          process.env.NODE_ENV === "test" ||
+          process.env.BUN_ENV === "test" ||
+          Boolean(process.env.GROUPY_FAST_RETRY);
+        const backoffMs = isTestEnv
+          ? Math.min(25 * attempt, 100)
+          : Math.min(300 * Math.pow(1.5, attempt) + Math.random() * 200, 5000);
         yield {
           type: "warning",
           message: `Network error connecting to model provider (${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}). Retrying attempt ${attempt}/${maxRetries} in ${Math.round(backoffMs)}ms...`,
