@@ -404,4 +404,30 @@ export class CliFormatter {
     }
     console.log();
   }
+
+  /**
+   * Formats a Claude Code style user prompt row (❯ chip + dark row background + white text).
+   */
+  static formatClaudeUserPrompt(text: string): string {
+    const chip = "\x1b[48;2;58;58;58m\x1b[38;2;138;138;138m ❯ \x1b[0m";
+    const body = `\x1b[48;2;58;58;58m\x1b[38;2;255;255;255m${text} \x1b[0m`;
+    return `${chip}${body}`;
+  }
+
+  /**
+   * Formats a Claude Code style assistant message turn (monospace light-slate text).
+   */
+  static formatClaudeAssistantResponse(text: string): string {
+    return `\x1b[38;2;192;202;245m${text}\x1b[0m`;
+  }
+
+  /**
+   * Formats conversation turns matching Claude Code / brainless specifications.
+   */
+  static formatClaudeMessage(role: "user" | "assistant", text: string): string {
+    if (role === "user") {
+      return CliFormatter.formatClaudeUserPrompt(text);
+    }
+    return CliFormatter.formatClaudeAssistantResponse(text);
+  }
 }

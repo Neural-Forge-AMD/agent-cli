@@ -13,7 +13,8 @@ export type SpinnerVariant =
   | "pulse_globe"
   | "sine_dots"
   | "triangles"
-  | "block_pulse";
+  | "block_pulse"
+  | "claude_sparkle";
 
 export interface SpinnerConfig {
   frames: string[];
@@ -24,6 +25,10 @@ export const SPINNER_VARIANTS: Record<SpinnerVariant, SpinnerConfig> = {
   braille: {
     frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
     intervalMs: 80,
+  },
+  claude_sparkle: {
+    frames: ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"],
+    intervalMs: 110,
   },
   rotating_blocks: {
     frames: ["▖", "▘", "▝", "▗"],
@@ -201,3 +206,88 @@ export class LiveSpinner {
     return this.isSpinning;
   }
 }
+
+/**
+ * ClaudeThinkingSpinner — Claude Code authentic "working" line implementation for terminal.
+ * Features: Pulsing sparkle glyph, rotating whimsical verbs, terracotta shimmer wave, elapsed time & interrupt hint.
+ */
+export class ClaudeThinkingSpinner {
+  private frames = SPINNER_VARIANTS.claude_sparkle.frames;
+  private frameIndex = 0;
+  private verbs = ["Thinking", "Levitating", "Schlepping", "Herding", "Percolating", "Noodling", "Conjuring"];
+  private verbIndex = 0;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private isSpinning = false;
+  private startTime = 0;
+  private lastVerbChange = 0;
+
+  start(): void {
+    if (this.isSpinning) return;
+    this.isSpinning = true;
+    this.startTime = performance.now();
+    this.lastVerbChange = performance.now();
+    this.frameIndex = 0;
+    this.verbIndex = 0;
+
+    this.timer = setInterval(() => {
+      this.frameIndex = (this.frameIndex + 1) % this.frames.length;
+      if (performance.now() - this.lastVerbChange > 5200) {
+        this.verbIndex = (this.verbIndex + 1) % this.verbs.length;
+        this.lastVerbChange = performance.now();
+      }
+      this.render();
+    }, 110);
+  }
+
+  private render(): void {
+    const frame = this.frames[this.frameIndex] || "✳";
+    const verb = this.verbs[this.verbIndex % this.verbs.length] || "Thinking";
+    const elapsedSec = ((performance.now() - this.startTime) / 1000).toFixed(1);
+
+    // Terracotta colors
+    const terracotta = "\x1b[38;2;205;105;74m";
+    const dim = "\x1b[38;2;125;125;125m";
+    const reset = "\x1b[0m";
+
+    // Verb with subtle terracotta shimmer wave
+    const shimmerVerb = shimmerText(`${verb}…`, {
+      sweepSeconds: 2.8,
+      baseRgb: [205, 105, 74],
+      highlightRgb: [231, 148, 117],
+    });
+
+    const output = `\r\x1b[K  ${terracotta}${frame}${reset} ${shimmerVerb}${reset} ${dim}(${elapsedSec}s · esc to interrupt)${reset}`;
+    process.stdout.write(output);
+  }
+
+  stop(finalMessage?: string, success = true): void {
+    if (!this.isSpinning) return;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    this.isSpinning = false;
+    process.stdout.write("\r\x1b[K");
+
+    if (finalMessage) {
+      const icon = success ? `\x1b[32m✓\x1b[0m` : `\x1b[31m✗\x1b[0m`;
+      console.log(`  ${icon} ${finalMessage}`);
+    }
+  }
+
+  clear(): void {
+    if (this.isSpinning) {
+      if (this.timer) {
+        clearInterval(this.timer);
+        this.timer = null;
+      }
+      this.isSpinning = false;
+      process.stdout.write("\r\x1b[K");
+    }
+  }
+
+  isActive(): boolean {
+    return this.isSpinning;
+  }
+}
+
