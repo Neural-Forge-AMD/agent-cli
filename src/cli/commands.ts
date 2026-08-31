@@ -20,6 +20,7 @@ import type { MemoryStore } from "../memories/store";
 import type { WorktreeManager } from "../worktree/manager";
 import type { CliRepl } from "./repl";
 import { CHROME_DEVTOOLS_MCP_SERVER_PATH } from "../mcp/servers/chrome-devtools";
+import { WEB_SEARCH_MCP_SERVER_PATH } from "../mcp/servers/web-search";
 
 export interface SlashCommandDef {
   name: string;
@@ -645,6 +646,7 @@ async function handleMcpCommand(ctx: CommandContext, args: string[]): Promise<vo
     console.log(`    ${style.cyan("/mcp resources [server]")}         - List resources exposed by MCP servers`);
     console.log(`    ${style.cyan("/mcp test <server>")}              - Ping an MCP server and measure latency`);
     console.log(`    ${style.cyan("/mcp add chrome")}                 - Connect built-in Chrome DevTools browser automation`);
+    console.log(`    ${style.cyan("/mcp add search")}                 - Connect built-in Cloud Web Search & Live Docs MCP`);
     console.log(`    ${style.cyan("/mcp add <name> <cmd> [args...]")} - Connect and save a new stdio MCP server`);
     console.log(`    ${style.cyan("/mcp remove <name>")}              - Disconnect and remove an MCP server`);
     console.log(`    ${style.cyan("/mcp reload")}                     - Reload all MCP configs and refresh tools`);
@@ -725,9 +727,18 @@ async function handleMcpCommand(ctx: CommandContext, args: string[]): Promise<vo
       }
     }
 
+    // Preset auto-detection for web-search / search
+    if (name === "search" || name === "web-search" || name === "docs") {
+      if (!command) {
+        command = process.execPath;
+        serverArgs = [WEB_SEARCH_MCP_SERVER_PATH];
+      }
+    }
+
     if (!name || !command) {
       console.log(style.yellow("\n  Usage: /mcp add <name> <command> [args...]"));
       console.log(style.dim("  Example: /mcp add chrome"));
+      console.log(style.dim("  Example: /mcp add search"));
       console.log(style.dim("  Example: /mcp add sqlite npx -y @modelcontextprotocol/server-sqlite ./db.sqlite\n"));
       return;
     }
