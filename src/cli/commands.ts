@@ -19,6 +19,7 @@ import type { SkillsLoader } from "../skills/loader";
 import type { MemoryStore } from "../memories/store";
 import type { WorktreeManager } from "../worktree/manager";
 import type { CliRepl } from "./repl";
+import { CHROME_DEVTOOLS_MCP_SERVER_PATH } from "../mcp/servers/chrome-devtools";
 
 export interface SlashCommandDef {
   name: string;
@@ -266,7 +267,7 @@ export async function handleInteractiveLogin(backendUrl?: string): Promise<void>
   const authClient = new AuthClient(credStore);
   const targetBackend = backendUrl || process.env.GROUPY_BACKEND_URL || "https://api.groupy-hub.store";
 
-  console.log(style.brand(`\n🔐 Logging into Backend: ${targetBackend}`));
+  console.log(style.brand(`\n Logging into Backend: ${targetBackend}`));
 
   try {
     const { authUrl, waitForToken } = await authClient.startOAuthFlow({
@@ -593,7 +594,7 @@ async function handleSecurityCommand(ctx: CommandContext, args: string[]): Promi
 
   if (sub === "help") {
     console.log();
-    console.log(style.bold("  🛡️  Security & Vulnerability Assessment Commands (Strix):"));
+    console.log(style.bold("    Security & Vulnerability Assessment Commands (Strix):"));
     console.log(`    ${style.cyan("/security scan")}          - Scan repository for exposed secrets & OWASP Top 10 vulnerabilities`);
     console.log(`    ${style.cyan("/security audit <path>")}  - Run security audit on a specific file or directory`);
     console.log(`    ${style.cyan("/security fix")}           - Spawn security-auditor sub-agent to remediate vulnerabilities`);
@@ -611,7 +612,7 @@ async function handleSecurityCommand(ctx: CommandContext, args: string[]): Promi
       });
       return;
     }
-    console.log(style.brand("\n  🛡️  Spawning autonomous security-auditor sub-agent..."));
+    console.log(style.brand("\n    Spawning autonomous security-auditor sub-agent..."));
     const handle = await spawner.spawnAgent({
       taskName: "security_remediation",
       message: "Perform a security audit across the codebase, identify all vulnerabilities and exposed secrets, and apply safe code patches to remediate them.",
@@ -622,7 +623,7 @@ async function handleSecurityCommand(ctx: CommandContext, args: string[]): Promi
   }
 
   // Default: scan or audit
-  console.log(style.brand(`\n  🛡️  Running static security scan on: ${style.dim(target)} ...`));
+  console.log(style.brand(`\n    Running static security scan on: ${style.dim(target)} ...`));
   const report = await runSecurityScan(target);
   CliFormatter.printSecurityReport(report);
 }
@@ -643,6 +644,7 @@ async function handleMcpCommand(ctx: CommandContext, args: string[]): Promise<vo
     console.log(`    ${style.cyan("/mcp tools [server]")}             - List tools exposed by MCP servers`);
     console.log(`    ${style.cyan("/mcp resources [server]")}         - List resources exposed by MCP servers`);
     console.log(`    ${style.cyan("/mcp test <server>")}              - Ping an MCP server and measure latency`);
+    console.log(`    ${style.cyan("/mcp add chrome")}                 - Connect built-in Chrome DevTools browser automation`);
     console.log(`    ${style.cyan("/mcp add <name> <cmd> [args...]")} - Connect and save a new stdio MCP server`);
     console.log(`    ${style.cyan("/mcp remove <name>")}              - Disconnect and remove an MCP server`);
     console.log(`    ${style.cyan("/mcp reload")}                     - Reload all MCP configs and refresh tools`);
@@ -711,12 +713,21 @@ async function handleMcpCommand(ctx: CommandContext, args: string[]): Promise<vo
   }
 
   if (sub === "add") {
-    const name = args[1];
-    const command = args[2];
-    const serverArgs = args.slice(3);
+    let name = args[1];
+    let command = args[2];
+    let serverArgs = args.slice(3);
+
+    // Preset auto-detection for chrome / chrome-devtools
+    if (name === "chrome" || name === "chrome-devtools") {
+      if (!command) {
+        command = process.execPath;
+        serverArgs = [CHROME_DEVTOOLS_MCP_SERVER_PATH];
+      }
+    }
 
     if (!name || !command) {
       console.log(style.yellow("\n  Usage: /mcp add <name> <command> [args...]"));
+      console.log(style.dim("  Example: /mcp add chrome"));
       console.log(style.dim("  Example: /mcp add sqlite npx -y @modelcontextprotocol/server-sqlite ./db.sqlite\n"));
       return;
     }
