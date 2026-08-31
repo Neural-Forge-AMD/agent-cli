@@ -3,6 +3,7 @@ import { GrokPermission } from "../src/ui/components/grok/grok-permission";
 import { GrokPrompt } from "../src/ui/components/grok/grok-prompt";
 import { GrokSlashMenu } from "../src/ui/components/grok/grok-slash-menu";
 import { GrokHeader, GrokLogo } from "../src/ui/components/grok/grok-header";
+import { GrokStatus } from "../src/ui/components/grok/grok-status";
 import { promptToolApproval } from "../src/cli/ui/prompt";
 
 describe("Grok Permission & Grok Slash Menu UI Integration", () => {
@@ -12,6 +13,7 @@ describe("Grok Permission & Grok Slash Menu UI Integration", () => {
     expect(typeof GrokSlashMenu).toBe("function");
     expect(typeof GrokHeader).toBe("function");
     expect(typeof GrokLogo).toBe("function");
+    expect(typeof GrokStatus).toBe("function");
   });
 
   it("should execute promptToolApproval with Grok left-border layout in non-TTY / test mode", async () => {
