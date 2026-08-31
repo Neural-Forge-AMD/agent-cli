@@ -47,6 +47,7 @@ const userBinaryPath = binaryName ? join(userBinDir, `pikaa-v${version}-${binary
 function findExistingBinary() {
   if (!binaryName) return null;
   const candidates = [
+    join(rootDir, "pikaa.exe"),
     join(rootDir, "bin", binaryName),
     join(rootDir, "dist", "bin", binaryName),
     userBinaryPath,
