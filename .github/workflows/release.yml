@@ -97,6 +97,12 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Sync package version with tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          npm version $VERSION --no-git-tag-version --allow-same-version
+
       - name: Install Dependencies & Build JS Dist
         run: |
           bun install
