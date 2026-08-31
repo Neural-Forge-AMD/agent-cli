@@ -7,7 +7,8 @@ describe("Progressive Real-Time Streaming Markdown Highlighter", () => {
     
     // Feed partial words of a normal sentence
     const chunk1 = highlighter.feed("Multi-agent ");
-    expect(chunk1).toBe("Multi-agent ");
+    // Body lines now have 2-space left margin
+    expect(chunk1).toBe("  Multi-agent ");
 
     const chunk2 = highlighter.feed("orchestration engine");
     expect(chunk2).toBe("orchestration engine");

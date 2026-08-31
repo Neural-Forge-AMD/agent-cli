@@ -201,36 +201,36 @@ export class MarkdownHighlighter {
 
     // 2. Headings
     if (/^#\s+/.test(raw)) {
-      return `\x1b[1m\x1b[38;2;122;162;247m▌ ${c.bold}`;
+      return `  \x1b[1m\x1b[38;2;122;162;247m▌ ${c.bold}`;
     }
     if (/^##\s+/.test(raw)) {
-      return `\x1b[1m\x1b[38;2;122;162;247m■ ${c.bold}`;
+      return `  \x1b[1m\x1b[38;2;122;162;247m■ ${c.bold}`;
     }
     if (/^###\s+/.test(raw)) {
-      return `\x1b[1m\x1b[38;2;122;162;247m▲ ${c.bold}`;
+      return `  \x1b[1m\x1b[38;2;122;162;247m▲ ${c.bold}`;
     }
 
     // 3. Blockquotes
     if (/^>\s*/.test(raw)) {
-      return `\x1b[38;2;205;105;74m│\x1b[0m \x1b[3m\x1b[38;2;139;139;144m`;
+      return `  \x1b[38;2;205;105;74m│\x1b[0m \x1b[3m\x1b[38;2;139;139;144m`;
     }
 
     // 4. Bullet list items (- or *)
     const bulletMatch = raw.match(/^(\s*)([-*])\s+/);
     if (bulletMatch) {
       const indent = bulletMatch[1] || "";
-      return `${indent}\x1b[38;2;205;105;74m•\x1b[0m `;
+      return `  ${indent}\x1b[38;2;205;105;74m•\x1b[0m `;
     }
 
     // 5. Numbered list items (1. 2.)
     const numMatch = raw.match(/^(\s*)(\d+)\.\s+/);
     if (numMatch) {
       const indent = numMatch[1] || "";
-      return `${indent}\x1b[38;2;122;162;247m${numMatch[2]}.\x1b[0m `;
+      return `  ${indent}\x1b[38;2;122;162;247m${numMatch[2]}.\x1b[0m `;
     }
 
-    // Default regular body line
-    return this.processInlineString(raw);
+    // Default regular body line — always 2-space left margin
+    return "  " + this.processInlineString(raw);
   }
 
   private processInlineChar(char: string): string {
