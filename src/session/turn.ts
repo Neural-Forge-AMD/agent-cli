@@ -66,6 +66,7 @@ export async function runTurn(
     worldStatePrompt: formatWorldStatePrompt(worldState),
     memoriesPrompt,
     skillsPrompt,
+    isOrchestrator: session.tools.has("spawn_agent"),
     cwd,
   });
 
