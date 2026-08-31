@@ -93,8 +93,8 @@ export async function checkForUpdates(options: {
   timeoutMs?: number;
   cachePath?: string;
 } = {}): Promise<UpdateInfo | null> {
-  // If explicitly disabled via environment variable
-  if (process.env.PIKAA_NO_UPDATE_CHECK === "1" || process.env.CI) {
+  // If explicitly disabled via environment variable or in CI without explicit test options
+  if (process.env.PIKAA_NO_UPDATE_CHECK === "1" || (process.env.CI && !options.cachePath && !options.force)) {
     return null;
   }
 

@@ -128,7 +128,7 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
       const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : 30000;
       const isWindows = process.platform === "win32";
       const baseCmd = isWindows
-        ? ["powershell.exe", "-NoProfile", "-Command", command]
+        ? ["cmd.exe", "/d", "/s", "/c", command]
         : ["/bin/sh", "-c", command];
 
       // Build sandbox profile & wrap command (relax network if escalated)

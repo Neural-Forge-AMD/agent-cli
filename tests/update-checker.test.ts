@@ -102,4 +102,31 @@ describe("CLI Version Update Notification Subsystem", () => {
       console.log = orig;
     }
   });
+
+  it("should respect PIKAA_NO_UPDATE_CHECK=1 disable flag", async () => {
+    const prev = process.env.PIKAA_NO_UPDATE_CHECK;
+    process.env.PIKAA_NO_UPDATE_CHECK = "1";
+    try {
+      const mockCache: UpdateCacheData = {
+        lastChecked: Date.now(),
+        latestVersion: "0.3.0",
+        packageName: "@pikaa-ai/pikaa",
+      };
+      writeFileSync(testCacheFile, JSON.stringify(mockCache), "utf8");
+
+      const result = await checkForUpdates({
+        currentVersion: "0.2.5",
+        packageName: "@pikaa-ai/pikaa",
+        cachePath: testCacheFile,
+      });
+
+      expect(result).toBeNull();
+    } finally {
+      if (prev === undefined) {
+        delete process.env.PIKAA_NO_UPDATE_CHECK;
+      } else {
+        process.env.PIKAA_NO_UPDATE_CHECK = prev;
+      }
+    }
+  });
 });
