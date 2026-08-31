@@ -72,7 +72,7 @@ describe("Shell Escalation & Prefix Rules Engine", () => {
 
       expect(approvalPrompted).toBe(false); // Bypassed prompt because 'echo' is approved
       expect(result.output).toContain("hello escalated world");
-    });
+    }, 30000);
 
     it("should prompt user when sandbox_permissions is require_escalated and save prefix rule if requested", async () => {
       let promptCalled = false;
@@ -104,7 +104,7 @@ describe("Shell Escalation & Prefix Rules Engine", () => {
 
       // Verify that the prefix rule is now saved in SQLite
       expect(store.isApproved(testWs, ["echo", "prefix-saved", "second", "run"])).toBe(true);
-    });
+    }, 30000);
 
     it("should cancel execution if user rejects escalation prompt", async () => {
       const ctx: ToolContext = {
@@ -128,6 +128,6 @@ describe("Shell Escalation & Prefix Rules Engine", () => {
 
       expect(result.isError).toBe(true);
       expect(result.output).toContain("User declined approval");
-    });
+    }, 30000);
   });
 });

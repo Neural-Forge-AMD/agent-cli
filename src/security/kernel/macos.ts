@@ -29,8 +29,12 @@ export class MacOSSandbox {
       "(deny default)",
       "(allow process-exec)",
       "(allow process-fork)",
-      "(allow sysctl-read)",
+      "(allow sysctl*)",
+      "(allow mach-lookup)",
+      "(allow ipc-posix*)",
+      "(allow signal)",
       "(allow file-read*)",
+      "(allow file-ioctl)",
     ];
 
     // Permitted writable paths
