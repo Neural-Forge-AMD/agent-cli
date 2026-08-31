@@ -1,8 +1,17 @@
 import { describe, it, expect } from "bun:test";
 import { SPINNER_VARIANTS, ClaudeThinkingSpinner, LiveSpinner } from "../src/cli/ui/spinner";
-import { CliFormatter } from "../src/cli/ui/formatter";
+import {
+  CliFormatter,
+  formatTaskStepStart,
+  formatTaskStepFinish,
+  formatToolCard,
+  formatTaskProgressPlan,
+} from "../src/cli/ui/formatter";
 import { ClaudeMessage } from "../src/ui/components/claude/claude-message";
 import { ClaudeThinking, CLAUDE_GLYPHS, CLAUDE_VERBS } from "../src/ui/components/claude/claude-thinking";
+import { ClaudeToolCall } from "../src/ui/components/claude/claude-tool-call";
+import { ClaudeTodoList } from "../src/ui/components/claude/claude-todo-list";
+import { ClaudeDiff } from "../src/ui/components/claude/claude-diff";
 
 describe("Claude Message & Claude Thinking UI Integration", () => {
   it("should define authentic claude_sparkle spinner variant matching brainless specification", () => {
@@ -54,5 +63,29 @@ describe("Claude Message & Claude Thinking UI Integration", () => {
 
     expect(typeof ClaudeMessage).toBe("function");
     expect(typeof ClaudeThinking).toBe("function");
+    expect(typeof ClaudeToolCall).toBe("function");
+    expect(typeof ClaudeTodoList).toBe("function");
+    expect(typeof ClaudeDiff).toBe("function");
+  });
+
+  it("should format task progress plan using Claude todo list grammar (⎿ ✔ / ◼ / ◻)", () => {
+    // Should run formatTaskProgressPlan without throwing
+    expect(() => {
+      formatTaskProgressPlan([
+        { step: "Analyze requirements", status: "completed" },
+        { step: "Implement component", status: "in_progress" },
+        { step: "Run verification tests", status: "pending" },
+      ]);
+    }).not.toThrow();
+  });
+
+  it("should format task steps and diffs using Claude tool call and patch grammar (⏺ / ⎿)", () => {
+    expect(() => {
+      formatTaskStepStart(1, "Bash", { command: "bun test" });
+      formatTaskStepFinish(1, "Bash", { command: "bun test" }, "4 pass\n0 fail");
+      formatToolCard("Bash", { command: "bun run build" }, "Build completed");
+      CliFormatter.formatPatchDiff("src/index.ts", "const a = 1;", "const a = 2;");
+    }).not.toThrow();
   });
 });
+

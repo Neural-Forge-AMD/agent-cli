@@ -79,16 +79,16 @@ export interface LiveSpinnerOptions {
 }
 
 export class LiveSpinner {
-  private variant: SpinnerVariant = "braille";
-  private frames: string[] = SPINNER_VARIANTS.braille.frames;
-  private intervalMs: number = SPINNER_VARIANTS.braille.intervalMs;
+  private variant: SpinnerVariant = "claude_sparkle";
+  private frames: string[] = SPINNER_VARIANTS.claude_sparkle.frames;
+  private intervalMs: number = SPINNER_VARIANTS.claude_sparkle.intervalMs;
   private frameIndex = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private currentMessage = "";
   private isSpinning = false;
   private startTime = 0;
   private enableShimmer: boolean = true;
-  private colorFn: (frame: string) => string = (f) => `${c.cyan}${f}${c.reset}`;
+  private colorFn: (frame: string) => string = (f) => `\x1b[38;2;205;105;74m${f}\x1b[0m`;
 
   constructor(options: LiveSpinnerOptions = {}) {
     if (options.variant && SPINNER_VARIANTS[options.variant]) {
