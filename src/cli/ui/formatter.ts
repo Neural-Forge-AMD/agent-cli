@@ -406,19 +406,20 @@ export class CliFormatter {
   }
 
   /**
-   * Formats a Claude Code style user prompt row (❯ chip + dark row background + white text).
+   * Formats a Claude Code style user prompt row (❯ chip + dark row background spanning width + white text).
    */
   static formatClaudeUserPrompt(text: string): string {
-    const chip = "\x1b[48;2;58;58;58m\x1b[38;2;138;138;138m ❯ \x1b[0m";
-    const body = `\x1b[48;2;58;58;58m\x1b[38;2;255;255;255m${text} \x1b[0m`;
-    return `${chip}${body}`;
+    const cols = typeof process.stdout?.columns === "number" ? process.stdout.columns : 80;
+    const width = Math.min(76, Math.max(48, cols - 6));
+    const pad = Math.max(1, width - (text.length + 5));
+    return `  \x1b[48;2;50;50;52m\x1b[38;2;145;145;150m ❯ \x1b[38;2;255;255;255m\x1b[1m${text}${" ".repeat(pad)}\x1b[0m`;
   }
 
   /**
    * Formats a Claude Code style assistant message turn (monospace light-slate text).
    */
   static formatClaudeAssistantResponse(text: string): string {
-    return `\x1b[38;2;192;202;245m${text}\x1b[0m`;
+    return `  \x1b[38;2;192;202;245m${text}\x1b[0m`;
   }
 
   /**
