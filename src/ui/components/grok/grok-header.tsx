@@ -144,8 +144,8 @@ export interface GrokHeaderProps {
 
 export function GrokHeader({
   version = "0.2.93",
-  headline = "Groupy 4.5 is here!",
-  subhead = "Groupy 4.5 is now available. Try it out in the /model picker.",
+  headline = "Groupy is here!",
+  subhead = "Groupy is now available. Try it out in the /model picker.",
   menu = DEFAULT_MENU,
   className = "",
 }: GrokHeaderProps) {
