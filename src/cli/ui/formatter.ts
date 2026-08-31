@@ -128,6 +128,30 @@ export class CliFormatter {
     console.log();
   }
 
+  static printUpdateNotice(update: { currentVersion: string; latestVersion: string; packageName?: string }): void {
+    const pkg = update.packageName || "@pikaa-ai/pikaa";
+    const cur = update.currentVersion.startsWith("v") ? update.currentVersion : `v${update.currentVersion}`;
+    const lat = update.latestVersion.startsWith("v") ? update.latestVersion : `v${update.latestVersion}`;
+
+    const innerWidth = 54;
+    const padLine = (content: string) => {
+      const visibleLen = style.stripAnsi(content).length;
+      const padRight = Math.max(0, innerWidth - visibleLen);
+      return `  ${style.yellow("│")}  ${content}${" ".repeat(padRight)}${style.yellow("│")}`;
+    };
+
+    const topBorder = `  ${style.yellow("╭")}${style.yellow("─".repeat(innerWidth + 2))}${style.yellow("╮")}`;
+    const bottomBorder = `  ${style.yellow("╰")}${style.yellow("─".repeat(innerWidth + 2))}${style.yellow("╯")}`;
+
+    console.log(topBorder);
+    console.log(padLine(`Update available: ${style.dim(cur)} → ${style.green(style.bold(lat))}`));
+    console.log(padLine(`${style.dim("Run to update:")}`));
+    console.log(padLine(`  ${style.cyan(`bun add -g ${pkg}`)}`));
+    console.log(padLine(`  ${style.dim("or:")} ${style.dim(`npm i -g ${pkg}`)}`));
+    console.log(bottomBorder);
+    console.log();
+  }
+
   static formatToolCall(toolName: string, args: Record<string, unknown>): void {
     const argsSummary = Object.entries(args)
       .map(([k, v]) => {

@@ -15,11 +15,13 @@ import {
   formatTaskStepStart,
   formatTaskStepFinish,
   formatTaskProgressPlan,
+  CliFormatter,
 } from "./ui/formatter";
 import { handleSlashCommand, AVAILABLE_SLASH_COMMANDS } from "./commands";
 import { InteractiveLineEditor } from "./ui/line-editor";
 import { promptToolApproval, promptUserQuestion } from "./ui/prompt";
 import { MarkdownHighlighter } from "./ui/markdown";
+import { checkForUpdates } from "./update-checker";
 import { CredentialsStore } from "../auth/store";
 import type { Session } from "../session/session";
 import type { AgentSpawner } from "../agents/spawner";
@@ -298,6 +300,13 @@ export class CliRepl {
       model: this.session.model,
       cwd: this.session.cwd,
     });
+
+    // Check for new version releases non-blockingly
+    checkForUpdates().then((update) => {
+      if (update?.updateAvailable) {
+        CliFormatter.printUpdateNotice(update);
+      }
+    }).catch(() => {});
 
     const editor = new InteractiveLineEditor({
       cwd: this.session.cwd,
