@@ -101,8 +101,9 @@ async function main(): Promise<void> {
     } else if (arg === "--help" || arg === "-h") {
       printCliHelp();
       process.exit(0);
-    } else if (!arg?.startsWith("-") && !singlePrompt) {
-      singlePrompt = arg;
+    } else if (!arg?.startsWith("-")) {
+      singlePrompt = args.slice(i).join(" ");
+      break;
     }
   }
 
@@ -176,7 +177,8 @@ async function main(): Promise<void> {
       singlePrompt.startsWith("audit") ||
       singlePrompt.startsWith("skills") ||
       singlePrompt.startsWith("whoami") ||
-      singlePrompt.startsWith("roles")
+      singlePrompt.startsWith("roles") ||
+      singlePrompt.startsWith("mcp")
     ) {
       const slashInput = singlePrompt.startsWith("/") ? singlePrompt : `/${singlePrompt}`;
       const handled = await handleSlashCommand(slashInput, {

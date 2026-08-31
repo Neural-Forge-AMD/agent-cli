@@ -327,4 +327,81 @@ export class CliFormatter {
 
     console.log(`  └──${"─".repeat(50)}\n`);
   }
+
+  static printMcpServers(
+    servers: Array<{
+      name: string;
+      connected: boolean;
+      serverInfo?: { name?: string; version?: string };
+      toolsCount: number;
+      resourcesCount: number;
+      promptsCount: number;
+    }>,
+    configFiles: string[] = []
+  ): void {
+    console.log();
+    console.log(style.bold("  🔌 Model Context Protocol (MCP) Servers:"));
+    if (configFiles.length > 0) {
+      console.log(`  ${style.dim("Loaded configs:")} ${style.dim(configFiles.join(", "))}`);
+    }
+    console.log(`  ${style.dim("─".repeat(64))}`);
+
+    if (servers.length === 0) {
+      console.log(`  ${style.dim("No active MCP servers connected.")}`);
+      console.log(`  ${style.dim("To add an MCP server, run:")} ${style.cyan("/mcp add <name> <command> [args...]")}`);
+      console.log(`  ${style.dim("Example:")} ${style.cyan("/mcp add sqlite npx -y @modelcontextprotocol/server-sqlite /path/to/db.sqlite")}\n`);
+      return;
+    }
+
+    for (const s of servers) {
+      const statusIcon = s.connected ? style.green("● Online") : style.red("○ Disconnected");
+      const info = s.serverInfo ? ` (${s.serverInfo.name || ""} v${s.serverInfo.version || "1.0"})` : "";
+      console.log(`\n    • ${style.bold(s.name)}${style.dim(info)} — [${statusIcon}]`);
+      console.log(
+        `      ${style.dim("Capabilities:")} ${style.cyan(`${s.toolsCount} tools`)} ${style.dim("·")} ${style.cyan(`${s.resourcesCount} resources`)} ${style.dim("·")} ${style.cyan(`${s.promptsCount} prompts`)}`
+      );
+    }
+
+    console.log(`\n  ${style.dim("─".repeat(64))}`);
+    console.log(`  ${style.dim("Commands:")} ${style.cyan("/mcp tools [server]")} ${style.dim("·")} ${style.cyan("/mcp test <server>")} ${style.dim("·")} ${style.cyan("/mcp add <name> <cmd>")}\n`);
+  }
+
+  static printMcpTools(serverName: string, tools: Array<{ name: string; description?: string; inputSchema?: any }>): void {
+    console.log();
+    console.log(style.bold(`  🛠️  MCP Tools for [${style.cyan(serverName)}] (${tools.length} tools):`));
+    console.log(`  ${style.dim("─".repeat(64))}`);
+
+    if (tools.length === 0) {
+      console.log(`  ${style.dim("No tools exposed by this server.")}\n`);
+      return;
+    }
+
+    for (const t of tools) {
+      console.log(`    • ${style.cyan(t.name)}: ${t.description || style.dim("No description")}`);
+      const props = t.inputSchema?.properties ? Object.keys(t.inputSchema.properties) : [];
+      const req = new Set(t.inputSchema?.required || []);
+      if (props.length > 0) {
+        const paramList = props.map((p) => (req.has(p) ? style.yellow(`${p}*`) : style.dim(p))).join(", ");
+        console.log(`      ${style.dim("Params:")} ${paramList}`);
+      }
+    }
+    console.log();
+  }
+
+  static printMcpResources(serverName: string, resources: Array<{ uri: string; name?: string; description?: string; mimeType?: string }>): void {
+    console.log();
+    console.log(style.bold(`  📦 MCP Resources for [${style.cyan(serverName)}] (${resources.length} resources):`));
+    console.log(`  ${style.dim("─".repeat(64))}`);
+
+    if (resources.length === 0) {
+      console.log(`  ${style.dim("No resources exposed by this server.")}\n`);
+      return;
+    }
+
+    for (const r of resources) {
+      const label = r.name || r.description ? ` (${r.name || r.description})` : "";
+      console.log(`    • ${style.cyan(r.uri)}${style.dim(label)} ${r.mimeType ? style.dim(`[${r.mimeType}]`) : ""}`);
+    }
+    console.log();
+  }
 }

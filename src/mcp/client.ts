@@ -237,6 +237,30 @@ export class McpClient {
     return response.result as McpGetPromptResult;
   }
 
+  getServerInfo(): McpInitializeResult["serverInfo"] | null {
+    return this.serverInfo;
+  }
+
+  async ping(): Promise<{ success: boolean; durationMs: number; error?: string }> {
+    const start = performance.now();
+    try {
+      const response = await this.transport.send({
+        jsonrpc: "2.0",
+        id: this.nextRequestId++,
+        method: "ping",
+        params: {},
+      });
+      const durationMs = Math.round((performance.now() - start) * 10) / 10;
+      if (response.error) {
+        return { success: false, durationMs, error: response.error.message };
+      }
+      return { success: true, durationMs };
+    } catch (err) {
+      const durationMs = Math.round((performance.now() - start) * 10) / 10;
+      return { success: false, durationMs, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   async close(): Promise<void> {
     await this.transport.close();
   }

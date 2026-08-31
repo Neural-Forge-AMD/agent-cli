@@ -118,7 +118,7 @@ export async function handleSlashCommand(
       return true;
 
     case "/mcp":
-      printMcp(ctx);
+      await handleMcpCommand(ctx, args);
       return true;
 
     case "/skills":
@@ -616,5 +616,157 @@ async function handleSecurityCommand(ctx: CommandContext, args: string[]): Promi
   const report = await runSecurityScan(target);
   CliFormatter.printSecurityReport(report);
 }
+
+async function handleMcpCommand(ctx: CommandContext, args: string[]): Promise<void> {
+  const manager = ctx.mcpManager;
+  if (!manager) {
+    console.log(style.yellow("\n  MCP Manager is not active in current session.\n"));
+    return;
+  }
+
+  const sub = (args[0] || "list").toLowerCase();
+
+  if (sub === "help") {
+    console.log();
+    console.log(style.bold("  🔌 Model Context Protocol (MCP) Commands:"));
+    console.log(`    ${style.cyan("/mcp")} or ${style.cyan("/mcp list")}                - List all connected MCP servers & capabilities`);
+    console.log(`    ${style.cyan("/mcp tools [server]")}             - List tools exposed by MCP servers`);
+    console.log(`    ${style.cyan("/mcp resources [server]")}         - List resources exposed by MCP servers`);
+    console.log(`    ${style.cyan("/mcp test <server>")}              - Ping an MCP server and measure latency`);
+    console.log(`    ${style.cyan("/mcp add <name> <cmd> [args...]")} - Connect and save a new stdio MCP server`);
+    console.log(`    ${style.cyan("/mcp remove <name>")}              - Disconnect and remove an MCP server`);
+    console.log(`    ${style.cyan("/mcp reload")}                     - Reload all MCP configs and refresh tools`);
+    console.log();
+    return;
+  }
+
+  if (sub === "tools") {
+    const serverName = args[1];
+    if (serverName) {
+      const client = manager.getClient(serverName);
+      if (!client) {
+        console.log(style.red(`\n  MCP server '${serverName}' not found.\n`));
+        return;
+      }
+      CliFormatter.printMcpTools(serverName, client.getTools());
+    } else {
+      const clients = manager.listClients();
+      if (clients.length === 0) {
+        console.log(style.dim("\n  No MCP servers connected.\n"));
+        return;
+      }
+      for (const client of clients) {
+        CliFormatter.printMcpTools(client.name, client.getTools());
+      }
+    }
+    return;
+  }
+
+  if (sub === "resources") {
+    const serverName = args[1];
+    if (serverName) {
+      const client = manager.getClient(serverName);
+      if (!client) {
+        console.log(style.red(`\n  MCP server '${serverName}' not found.\n`));
+        return;
+      }
+      CliFormatter.printMcpResources(serverName, client.getResources());
+    } else {
+      const clients = manager.listClients();
+      if (clients.length === 0) {
+        console.log(style.dim("\n  No MCP servers connected.\n"));
+        return;
+      }
+      for (const client of clients) {
+        CliFormatter.printMcpResources(client.name, client.getResources());
+      }
+    }
+    return;
+  }
+
+  if (sub === "test" || sub === "ping") {
+    const serverName = args[1];
+    if (!serverName) {
+      console.log(style.yellow("\n  Usage: /mcp test <server-name>\n"));
+      return;
+    }
+    console.log(style.dim(`\n  Pinging MCP server '${serverName}'...`));
+    const result = await manager.pingServer(serverName);
+    if (result.success) {
+      console.log(style.green(`  ✓ PONG from '${serverName}' in ${result.durationMs}ms\n`));
+    } else {
+      console.log(style.red(`  ✕ Ping failed for '${serverName}': ${result.error || "Unknown error"}\n`));
+    }
+    return;
+  }
+
+  if (sub === "add") {
+    const name = args[1];
+    const command = args[2];
+    const serverArgs = args.slice(3);
+
+    if (!name || !command) {
+      console.log(style.yellow("\n  Usage: /mcp add <name> <command> [args...]"));
+      console.log(style.dim("  Example: /mcp add sqlite npx -y @modelcontextprotocol/server-sqlite ./db.sqlite\n"));
+      return;
+    }
+
+    console.log(style.brand(`\n  Connecting to new MCP server '${name}' (${command})...`));
+    try {
+      const client = await manager.registerServer(name, {
+        type: "stdio",
+        command,
+        args: serverArgs,
+      });
+      manager.registerToolsIntoRouter(ctx.session.tools);
+
+      const configFile = manager.getDefaultConfigFile(ctx.session.cwd);
+      manager.saveServerToConfigFile(configFile, name, {
+        type: "stdio",
+        command,
+        args: serverArgs,
+      });
+
+      console.log(
+        style.green(
+          `  ✓ MCP server '${name}' connected successfully! (${client.getTools().length} tools discovered, saved to ${style.dim(configFile)})\n`
+        )
+      );
+    } catch (err) {
+      console.log(style.red(`  ✕ Failed to connect MCP server '${name}': ${err instanceof Error ? err.message : String(err)}\n`));
+    }
+    return;
+  }
+
+  if (sub === "remove" || sub === "rm" || sub === "delete") {
+    const name = args[1];
+    if (!name) {
+      console.log(style.yellow("\n  Usage: /mcp remove <server-name>\n"));
+      return;
+    }
+
+    const removed = await manager.removeServer(name, ctx.session.tools);
+    const configFile = manager.getDefaultConfigFile(ctx.session.cwd);
+    manager.removeServerFromConfigFile(configFile, name);
+
+    if (removed) {
+      console.log(style.green(`\n  ✓ MCP server '${name}' removed and disconnected.\n`));
+    } else {
+      console.log(style.yellow(`\n  MCP server '${name}' was not running.\n`));
+    }
+    return;
+  }
+
+  if (sub === "reload" || sub === "restart") {
+    console.log(style.brand("\n  Reloading all MCP configurations..."));
+    await manager.reload(ctx.session.tools);
+    console.log(style.green("  ✓ All MCP servers reloaded and tools refreshed.\n"));
+    return;
+  }
+
+  // Default: list servers
+  CliFormatter.printMcpServers(manager.listServers(), manager.getLoadedConfigFiles());
+}
+
 
 

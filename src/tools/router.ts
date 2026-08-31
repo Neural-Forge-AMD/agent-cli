@@ -12,6 +12,21 @@ export class ToolRouter {
     this.tools.set(tool.name, tool);
   }
 
+  unregister(name: string): boolean {
+    return this.tools.delete(name);
+  }
+
+  unregisterPrefix(prefix: string): number {
+    let count = 0;
+    for (const key of Array.from(this.tools.keys())) {
+      if (key.startsWith(prefix)) {
+        this.tools.delete(key);
+        count++;
+      }
+    }
+    return count;
+  }
+
   get(name: string): Tool | undefined {
     return this.tools.get(name);
   }
