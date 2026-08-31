@@ -376,5 +376,19 @@ export class CliRepl {
         console.error(style.red(`Failed to submit turn: ${err instanceof Error ? err.message : String(err)}\n`));
       }
     }
+
+    await this.close();
+  }
+
+  async close(): Promise<void> {
+    if (this.isClosed) return;
+    this.isClosed = true;
+    this.spinner.stop();
+
+    if (this.mcpManager) {
+      try {
+        await this.mcpManager.closeAll();
+      } catch {}
+    }
   }
 }

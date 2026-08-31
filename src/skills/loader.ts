@@ -169,7 +169,7 @@ export class SkillsLoader {
   }
 
   /**
-   * Loads full markdown instructions for a specific skill
+   * Loads full markdown instructions for a specific skill (supports exact and normalized/fuzzy naming)
    */
   loadSkill(cwd: string, skillName: string): LoadedSkill | null {
     if (this.isSkillDisabled(skillName)) {
@@ -177,7 +177,13 @@ export class SkillsLoader {
     }
 
     const all = this.listSkills(cwd, { includeDisabled: false });
-    const meta = all.find((s) => s.name.toLowerCase() === skillName.toLowerCase());
+    const target = skillName.trim().toLowerCase();
+    const normalize = (str: string) => str.toLowerCase().replace(/[-_\s]/g, "");
+    const targetNorm = normalize(skillName);
+
+    const meta =
+      all.find((s) => s.name.toLowerCase() === target) ||
+      all.find((s) => normalize(s.name) === targetNorm);
     if (!meta) return null;
 
     try {
@@ -257,10 +263,20 @@ export class SkillsLoader {
     const skills = this.listSkills(cwd, { includeDisabled: false });
     if (skills.length === 0) return "";
 
-    // Limit system prompt to top 30 most relevant enabled skills to conserve context tokens
-    const topSkills = skills.slice(0, 30);
-    const lines = topSkills.map((s) => `- **${s.name}**: ${s.description}`);
-    const suffix = skills.length > 30 ? `\n... and ${skills.length - 30} more specialized skills.` : "";
-    return `\n## Available Domain Skills\n<available_skills>\n${lines.join("\n")}${suffix}\n</available_skills>\nWhen tackling complex specialized tasks that match any of these skills, use the \`load_skill\` tool to retrieve full instructions.`;
+    // Prioritize all workspace and built-in skills, plus top global skills (capped at 250 to keep prompt lean)
+    const prioritySkills = skills.filter((s) => s.scope === "workspace" || s.scope === "built-in");
+    const otherSkills = skills.filter((s) => s.scope !== "workspace" && s.scope !== "built-in");
+    const selectedSkills = [...prioritySkills, ...otherSkills].slice(0, 250);
+
+    const lines = selectedSkills.map((s) => {
+      const desc = s.shortDescription || s.description;
+      return `- **${s.name}**: ${desc}`;
+    });
+    const suffix =
+      skills.length > selectedSkills.length
+        ? `\n... and ${skills.length - selectedSkills.length} additional skills available via load_skill.`
+        : "";
+
+    return `\n## Available Domain Skills\n<available_skills>\n${lines.join("\n")}${suffix}\n</available_skills>\nWhen tackling complex specialized tasks that match any of these skills (e.g., scientific computing, biology/bioinformatics, chemistry, physics, quantum computing, machine learning, mathematics, security auditing, UI frontend design, systematic debugging, TDD), you MUST autonomously use the \`load_skill\` tool to retrieve full instructions before implementing.`;
   }
 }

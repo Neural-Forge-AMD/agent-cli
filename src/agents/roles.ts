@@ -92,6 +92,16 @@ export class AgentRoleRegistry {
       nicknameCandidates: ["Artisan", "Pixel", "Canvas", "Palette", "Studio"],
       allowedToolNames: ["read_file", "list_dir", "shell", "apply_patch", "write_file"],
     });
+
+    // 8. Scientific Computing, Bioinformatics & Data Science Specialist
+    this.registerRole({
+      name: "scientist",
+      description: "Autonomous scientific computing, bioinformatics, quantum mechanics, chemistry, and ML agent equipped with scientific domain skills.",
+      systemPrompt:
+        "You are a Senior Computational Research Scientist. You leverage specialized scientific skills (e.g. biopython, rdkit, qiskit, astropy, scanpy, sympy, scikit-learn, deepchem) to execute rigorous scientific modeling, data analysis, and domain-specific code execution.",
+      nicknameCandidates: ["Newton", "Curie", "Turing", "Euler", "Galileo", "Darwin"],
+      allowedToolNames: ["read_file", "list_dir", "shell", "apply_patch", "write_file", "load_skill"],
+    });
   }
 
   registerRole(role: AgentRole): void {

@@ -11,6 +11,7 @@ import { resolve, dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { McpClient } from "./client";
 import { StdioTransport, SseTransport } from "./transport";
+import { GlobalProcessRegistry } from "./process-killer";
 import type { McpServerConfig, McpServersConfigFile, McpToolSchema } from "./types";
 import type { ToolRouter } from "../tools/router";
 import type { Tool } from "../tools/types";
@@ -20,6 +21,10 @@ export class McpManager {
   private serverConfigs = new Map<string, McpServerConfig>();
   private loadedConfigFiles = new Set<string>();
   public lazyThreshold = 8; // Automatically lazy-load servers with more than 8 tools
+
+  constructor() {
+    GlobalProcessRegistry.ensureExitHooks();
+  }
 
   /**
    * Register and initialize an MCP server from configuration
@@ -466,5 +471,6 @@ export class McpManager {
     }
     this.clients.clear();
     this.serverConfigs.clear();
+    GlobalProcessRegistry.killAll();
   }
 }

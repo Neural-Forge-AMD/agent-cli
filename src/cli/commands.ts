@@ -164,6 +164,16 @@ export async function handleSlashCommand(
     case "/exit":
     case "/quit":
       console.log(style.dim("Goodbye!"));
+      if (ctx.mcpManager) {
+        try {
+          await ctx.mcpManager.closeAll();
+        } catch {}
+      }
+      if (ctx.repl) {
+        try {
+          await ctx.repl.close();
+        } catch {}
+      }
       process.exit(0);
 
     default:

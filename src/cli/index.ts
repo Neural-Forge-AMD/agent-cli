@@ -192,7 +192,10 @@ async function main(): Promise<void> {
         memoryStore,
         worktreeManager,
       });
-      if (handled) process.exit(0);
+      if (handled) {
+        await mcpManager.closeAll();
+        process.exit(0);
+      }
     }
 
     console.log(style.dim(`[Groupy single-shot execution for: "${singlePrompt}"]\n`));
@@ -213,8 +216,10 @@ async function main(): Promise<void> {
       await session.prompt(singlePrompt);
     } catch (err) {
       console.error(style.red(`\nExecution failed: ${err instanceof Error ? err.message : String(err)}`));
+      await mcpManager.closeAll();
       process.exit(1);
     }
+    await mcpManager.closeAll();
     console.log();
     process.exit(0);
   }
@@ -231,6 +236,8 @@ async function main(): Promise<void> {
     role,
   });
   await repl.start();
+  await repl.close();
+  process.exit(0);
 }
 
 async function handleLogin(authClient: AuthClient, backendUrl?: string): Promise<void> {
