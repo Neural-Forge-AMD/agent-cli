@@ -19,3 +19,4 @@ export * from "./worktree";
 export * from "./search";
 export * from "./code-mode";
 export * from "./auth";
+export * from "./ui";

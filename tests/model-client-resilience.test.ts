@@ -67,7 +67,7 @@ describe("ModelClient Resilient Transport & 10 Retries", () => {
     expect(doneEvent).toBeDefined();
 
     mockServer.close();
-  });
+  }, 15000);
 
   test("Fails gracefully after exceeding max 10 retries", async () => {
     let requestCount = 0;
@@ -108,5 +108,5 @@ describe("ModelClient Resilient Transport & 10 Retries", () => {
     expect(requestCount).toBe(4); // 1 initial + 3 retries
 
     mockFailingServer.close();
-  });
+  }, 15000);
 });

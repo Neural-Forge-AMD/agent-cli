@@ -48,8 +48,8 @@ describe("CLI Version Auto-Detection Subsystem", () => {
         user: "test-user",
       });
 
-      expect(captured).toContain("PIKAA AGENT");
-      expect(captured).toContain("v0.2.5");
+      expect(captured).toContain("Groupy Build Beta");
+      expect(captured).toContain("v0.3.0");
     } finally {
       console.log = originalLog;
     }

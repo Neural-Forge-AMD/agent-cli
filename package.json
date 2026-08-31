@@ -1,6 +1,6 @@
 {
   "name": "@pikaa-ai/pikaa",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "PIKAA CLI - AI coding agent that runs locally in your terminal.",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -45,6 +45,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.18",
+    "react": "^19.2.8",
     "typescript": "^5.7.0"
   }
 }

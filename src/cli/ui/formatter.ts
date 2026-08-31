@@ -47,7 +47,8 @@ export function formatTaskStepStart(step: number, toolName: string, args: Record
     })
     .join(" ");
 
-  console.log(`  ${style.brand("⠋")} ${style.bold(`[${step}]`)} ${style.cyan(toolName)} ${argsSummary}`);
+  const dot = "\x1b[38;2;224;175;104m⏺\x1b[0m";
+  console.log(`  ${dot} ${style.bold(toolName)} ${argsSummary ? `${style.dim("(")}${argsSummary}${style.dim(")")}` : ""}`);
 }
 
 export function formatTaskStepFinish(
@@ -57,12 +58,12 @@ export function formatTaskStepFinish(
   output?: string,
   isError = false
 ): void {
-  const icon = isError ? style.red("✗") : style.green("✔");
+  const dot = isError ? "\x1b[38;2;247;118;142m⏺\x1b[0m" : "\x1b[38;2;78;169;111m⏺\x1b[0m";
   const toolNameDisplay = style.bold(toolName);
 
   if (toolName === "apply_patch" && typeof args.targetContent === "string" && typeof args.replacementContent === "string") {
     const targetFile = args.path ? String(args.path) : undefined;
-    console.log(`  ${icon} ${style.dim(`[${step}]`)} ${toolNameDisplay} ${style.dim(targetFile || "")}`);
+    console.log(`  ${dot} ${style.bold("Update")} ${style.dim(`(${targetFile || ""})`)}`);
     CliFormatter.formatPatchDiff(targetFile, args.targetContent, args.replacementContent);
     return;
   }
@@ -72,20 +73,30 @@ export function formatTaskStepFinish(
     const trimmed = output.trim();
     const lines = trimmed.split("\n");
     if (lines.length === 1 && lines[0]!.length <= 60) {
-      summary = ` ${style.dim("↳")} ${style.dim(lines[0]!)}`;
+      summary = lines[0]!;
     } else if (toolName === "read_file" || toolName === "read_file_range") {
-      summary = ` ${style.dim(`↳ (${lines.length} lines read)`)}`;
+      summary = `${lines.length} lines read`;
     } else if (toolName === "grep_search" || toolName === "find_files") {
-      summary = ` ${style.dim(`↳ (${lines.length} items found)`)}`;
+      summary = `${lines.length} items found`;
     } else {
-      summary = ` ${style.dim(`↳ (${lines.length} lines output)`)}`;
+      summary = `${lines.length} lines output`;
     }
   }
 
-  console.log(`  ${icon} ${style.dim(`[${step}]`)} ${toolNameDisplay}${summary}`);
+  const argsSummary = Object.entries(args)
+    .map(([k, v]) => {
+      const valStr = typeof v === "string" ? `"${v.length > 35 ? v.slice(0, 32) + "..." : v}"` : JSON.stringify(v);
+      return `${style.dim(k)}=${style.cyan(valStr)}`;
+    })
+    .join(" ");
+
+  console.log(`  ${dot} ${toolNameDisplay} ${argsSummary ? `${style.dim("(")}${argsSummary}${style.dim(")")}` : ""}`);
+  if (summary) {
+    console.log(`    \x1b[38;2;86;95;137m⎿\x1b[0m ${style.dim(summary)}`);
+  }
   if (isError && output) {
     const firstLine = output.trim().split("\n")[0] || output;
-    console.log(`    ${style.red(firstLine.slice(0, 120))}`);
+    console.log(`      ${style.red(firstLine.slice(0, 120))}`);
   }
 }
 
@@ -102,29 +113,26 @@ export function formatToolCard(toolName: string, args: Record<string, unknown>, 
 
 export class CliFormatter {
   static printBanner(info: { model: string; cwd: string; user?: string; role?: string; version?: string }): void {
-    const b = c.brandBold;
-    const r = c.reset;
-    const g = c.dim;
-    const t = c.bold;
-
-    const userDisplay = info.user ? style.cyan(info.user) : style.dim("Guest");
     const version = info.version || getCliVersion({ prefix: true });
+    const amber = "\x1b[38;2;224;175;104m";
+    const fg = "\x1b[38;2;232;232;232m";
+    const dim = "\x1b[38;2;122;122;122m";
+    const gray = "\x1b[38;2;139;139;144m";
+    const keyDim = "\x1b[38;2;106;106;106m";
+    const border = "\x1b[38;2;47;47;51m";
+    const reset = "\x1b[0m";
 
     console.log();
-    console.log(`  ${b}       ▄▄████████▄▄${r}`);
-    console.log(`  ${b}    ▄███▀▀      ▀▀███▄${r}`);
-    console.log(`  ${b}  ▄██▀              ▀██▄${r}           ${t}PIKAA AGENT${r} ${style.dim(version)}`);
-    console.log(`  ${b} ███    ▄▄████▄▄      ███${r}          ${g}Autonomous Coding Engine${r}`);
-    console.log(`  ${b}███   ▄██▀    ▀██▄     ▀▀${r}          ${style.dim("User:")}  ${userDisplay}`);
-    console.log(`  ${b}███   ██▌  ██  ▐██████████████▄${r}    ${style.dim("Model:")} ${style.brand(info.model)}`);
-    console.log(`  ${b}███   ██▌  ██  ▐██    ██  ██ ▀${r}     ${style.dim("Dir:")}   ${style.dim(info.cwd)}`);
-    console.log(`  ${b}███   ▀██▄    ▄██▀     ▄▄${r}`);
-    console.log(`  ${b} ███    ▀▀████▀▀      ███${r}`);
-    console.log(`  ${b}  ▀██▄              ▄██▀${r}`);
-    console.log(`  ${b}    ▀███▄▄      ▄▄███▀${r}`);
-    console.log(`  ${b}       ▀▀████████▀▀${r}`);
-    console.log();
-    console.log(`  ${style.dim("Type /help for slash commands or /exit to quit.")}`);
+    console.log(`  ${border}┌────────────────────────────────────────────────────────────┐${reset}`);
+    console.log(`  ${border}│${reset}  ${fg}\x1b[1mGroupy Build Beta\x1b[0m ${dim}${version}${reset}${" ".repeat(Math.max(0, 39 - version.length))}${border}│${reset}`);
+    console.log(`  ${border}│${reset}  ${amber}\x1b[1mGroupy 4.5 is here!\x1b[0m                                       ${border}│${reset}`);
+    console.log(`  ${border}│${reset}  ${gray}Autonomous agent engine with skills, tools & worktree      ${border}│${reset}`);
+    console.log(`  ${border}│${reset}                                                            ${border}│${reset}`);
+    console.log(`  ${border}│${reset}  ${fg}New worktree${reset}${" ".repeat(36)}${keyDim}ctrl+w${reset}  ${border}│${reset}`);
+    console.log(`  ${border}│${reset}  ${fg}Resume session${reset}${" ".repeat(34)}${keyDim}ctrl+s${reset}  ${border}│${reset}`);
+    console.log(`  ${border}│${reset}  ${fg}Model: ${info.model}${reset}${" ".repeat(Math.max(0, 50 - info.model.length))}${border}│${reset}`);
+    console.log(`  ${border}│${reset}  ${fg}Quit${reset}${" ".repeat(44)}${keyDim}ctrl+q${reset}  ${border}│${reset}`);
+    console.log(`  ${border}└────────────────────────────────────────────────────────────┘${reset}`);
     console.log();
   }
 
@@ -208,20 +216,30 @@ export class CliFormatter {
       })
       .join(" ");
 
-    console.log(`  ${style.brand("◆")} ${style.bold("tool:")} ${style.cyan(toolName)} ${argsSummary}`);
+    const dot = "\x1b[38;2;78;169;111m⏺\x1b[0m";
+    console.log(`  ${dot} ${style.bold(toolName)} ${argsSummary ? `${style.dim("(")}${argsSummary}${style.dim(")")}` : ""}`);
   }
 
   static formatPatchDiff(filePath: string | undefined, oldSrc: string, newSrc: string): void {
     const lines = parsePatch(oldSrc, newSrc);
     if (lines.length === 0) return;
+
+    if (filePath) {
+      const dot = "\x1b[38;2;78;169;111m⏺\x1b[0m";
+      const arrow = "\x1b[38;2;86;95;137m⎿\x1b[0m";
+      console.log(`  ${dot} ${style.bold("Update")} \x1b[38;2;86;95;137m(\x1b[38;2;125;207;255m${filePath}\x1b[38;2;86;95;137m)\x1b[0m`);
+      console.log(`    ${arrow} ${style.dim("Applied patch diff hunks")}`);
+    }
+
     console.log(renderDiff(lines, { filePath }));
   }
 
   static formatToolOutput(output: string, isError = false): void {
-    const prefix = isError ? style.red("  ✗ error:") : style.dim("  ↳ output:");
+    const arrow = "\x1b[38;2;86;95;137m⎿\x1b[0m";
+    const prefix = isError ? `    ${arrow} ${style.red("error:")}` : `    ${arrow}`;
     const lines = output.trim().split("\n");
-    const preview = lines.slice(0, 6).map((l) => `${style.dim("    ")}${l}`).join("\n");
-    const more = lines.length > 6 ? `\n    ${style.dim(`... (${lines.length - 6} more lines)`)}` : "";
+    const preview = lines.slice(0, 6).map((l) => `      ${style.dim(l)}`).join("\n");
+    const more = lines.length > 6 ? `\n      ${style.dim(`... (${lines.length - 6} more lines)`)}` : "";
 
     console.log(`${prefix}\n${preview}${more}`);
   }
@@ -304,28 +322,30 @@ export class CliFormatter {
 
   static formatTaskProgressPlan(plan: PlanItem[], explanation?: string): void {
     console.log();
-    const title = explanation ? ` Task Progress: ${explanation} ` : " Task Progress Plan ";
-    const headerLine = `  ┌──${style.brand(title)}${"─".repeat(Math.max(0, 50 - title.length))}`;
-    console.log(headerLine);
+    if (explanation) {
+      console.log(`  ${style.bold(explanation)}`);
+    }
+
+    const DONE = "\x1b[38;5;114m✔\x1b[0m";
+    const ACTIVE = "\x1b[38;5;174m◼\x1b[0m";
+    const PENDING = "\x1b[38;5;246m◻\x1b[0m";
+    const DIM = "\x1b[38;5;246m";
+    const RESET = "\x1b[0m";
 
     for (let i = 0; i < plan.length; i++) {
       const item = plan[i];
       if (!item) continue;
-      let icon = style.dim("[ ]");
-      let text = style.dim(item.step);
 
+      const prefix = i === 0 ? "  ⎿ " : "    ";
       if (item.status === "completed") {
-        icon = style.green("[✓]");
-        text = style.bold(item.step);
+        console.log(`  ${DIM}${prefix}${RESET}${DONE} \x1b[9m\x1b[38;5;246m${item.step}\x1b[0m`);
       } else if (item.status === "in_progress") {
-        icon = style.cyan("[⏳]");
-        text = style.cyan(item.step);
+        console.log(`  ${DIM}${prefix}${RESET}${ACTIVE} \x1b[1m\x1b[38;5;174m${item.step}\x1b[0m`);
+      } else {
+        console.log(`  ${DIM}${prefix}${RESET}${PENDING} \x1b[38;5;246m${item.step}\x1b[0m`);
       }
-
-      console.log(`  │  ${icon} ${i + 1}. ${text}`);
     }
-
-    console.log(`  └──${"─".repeat(50)}\n`);
+    console.log();
   }
 
   static printMcpServers(
@@ -403,5 +423,31 @@ export class CliFormatter {
       console.log(`    • ${style.cyan(r.uri)}${style.dim(label)} ${r.mimeType ? style.dim(`[${r.mimeType}]`) : ""}`);
     }
     console.log();
+  }
+
+  /**
+   * Formats a Claude Code style user prompt row (❯ chip + dark row background + white text).
+   */
+  static formatClaudeUserPrompt(text: string): string {
+    const chip = "\x1b[48;2;58;58;58m\x1b[38;2;138;138;138m ❯ \x1b[0m";
+    const body = `\x1b[48;2;58;58;58m\x1b[38;2;255;255;255m${text} \x1b[0m`;
+    return `${chip}${body}`;
+  }
+
+  /**
+   * Formats a Claude Code style assistant message turn (monospace light-slate text).
+   */
+  static formatClaudeAssistantResponse(text: string): string {
+    return `\x1b[38;2;192;202;245m${text}\x1b[0m`;
+  }
+
+  /**
+   * Formats conversation turns matching Claude Code / brainless specifications.
+   */
+  static formatClaudeMessage(role: "user" | "assistant", text: string): string {
+    if (role === "user") {
+      return CliFormatter.formatClaudeUserPrompt(text);
+    }
+    return CliFormatter.formatClaudeAssistantResponse(text);
   }
 }

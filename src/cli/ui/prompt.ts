@@ -148,36 +148,117 @@ export async function promptChoice<T>(config: PromptChoiceConfig<T>): Promise<T>
 }
 
 /**
- * Interactive Approval Card & Prompt.
- * Displays clean tool execution details and returns "yes" | "no" | "always".
+ * Grok-style Interactive Approval Card & Prompt.
+ * Displays left-border │ gutter, title + command, numbered (●)/(○) radios, and
+ * footer hint: 1/3:select │ Ctrl+o:yolo │ Ctrl+c:cancel.
  */
 export async function promptToolApproval(params: {
   toolName: string;
   description: string;
   command?: string;
 }): Promise<"yes" | "no" | "always"> {
-  const boxWidth = Math.min(process.stdout.columns ?? 80, 70);
-  const border = "─".repeat(Math.max(10, boxWidth - 24));
+  const options = [
+    { key: "a", label: "Yes, and don't ask again for anything (always-approve mode)", value: "always" as const },
+    { key: "y", label: "Yes, proceed", value: "yes" as const, isDefault: true },
+    { key: "n", label: "No, reject (type to add feedback)", value: "no" as const },
+  ];
 
-  console.log(`\n  ${style.yellow("┌──")} ${style.bold("Approval Required")} ${style.yellow(border)}`);
-  console.log(`  ${style.yellow("│")}  ${style.dim("Tool:")}    ${style.bold(params.toolName)}`);
-  if (params.command) {
-    console.log(`  ${style.yellow("│")}  ${style.dim("Command:")} ${style.cyan(params.command)}`);
+  const title = params.description || `Tool Execution: ${params.toolName}`;
+  const command = params.command || params.toolName;
+
+  const BORDER = "\x1b[38;5;8m│\x1b[0m"; // gray gutter
+  const FG = "\x1b[38;2;225;225;225m";
+  const MUTED = "\x1b[38;2;139;139;144m";
+  const DIM = "\x1b[38;2;108;108;108m";
+  const RESET = "\x1b[0m";
+
+  console.log();
+  console.log(`  ${BORDER} ${FG}${title}${RESET}`);
+  console.log(`  ${BORDER} ${MUTED}${command}${RESET}`);
+  console.log(`  ${BORDER}`);
+
+  const renderCard = (selected: number) => {
+    for (let i = 0; i < options.length; i++) {
+      const opt = options[i]!;
+      const active = i === selected;
+      const radio = active ? `${FG}(●)${RESET}` : `${DIM}(○)${RESET}`;
+      const num = `${FG}${i + 1}${RESET}`;
+      const label = active ? `\x1b[1m${FG}${opt.label}${RESET}` : `${MUTED}${opt.label}${RESET}`;
+      console.log(`  ${BORDER} ${num} ${radio} ${label}`);
+    }
+    console.log(`  ${BORDER}`);
+    console.log(`  ${FG}${selected + 1}/${options.length}${RESET}${DIM}:select │ ${FG}Ctrl+o${RESET}${DIM}:yolo │ ${FG}Ctrl+c${RESET}${DIM}:cancel${RESET}`);
+  };
+
+  if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    renderCard(1);
+    return "yes";
   }
-  console.log(`  ${style.yellow("│")}  ${style.dim("Reason:")}  ${style.dim(params.description)}`);
-  console.log(`  ${style.yellow("└" + "─".repeat(Math.max(10, boxWidth - 4)))}\n`);
 
-  const decision = await promptChoice<"yes" | "no" | "always">({
-    message: "Allow execution?",
-    choices: [
-      { key: "y", label: "Yes", value: "yes", isDefault: true },
-      { key: "n", label: "No", value: "no" },
-      { key: "a", label: "Always allow this session", value: "always" },
-    ],
-    defaultIndex: 0,
+  return new Promise<"yes" | "no" | "always">((resolve) => {
+    let selectedIndex = 1; // default to "Yes, proceed"
+
+    readline.emitKeypressEvents(process.stdin);
+    const wasRaw = process.stdin.isRaw;
+    try {
+      process.stdin.setRawMode(true);
+    } catch {}
+    process.stdin.resume();
+
+    const render = () => {
+      renderCard(selectedIndex);
+    };
+
+    const cleanup = (val: "yes" | "no" | "always") => {
+      process.stdin.removeListener("keypress", onKeypress);
+      try {
+        process.stdin.setRawMode(wasRaw ?? false);
+      } catch {}
+      console.log();
+      resolve(val);
+    };
+
+    const onKeypress = (_str: string, key: readline.Key) => {
+      if (!key) return;
+
+      if (key.ctrl && key.name === "c") {
+        cleanup("no");
+        return;
+      }
+      if (key.ctrl && key.name === "o") {
+        cleanup("always");
+        return;
+      }
+
+      if (key.name === "up") {
+        selectedIndex = (selectedIndex - 1 + options.length) % options.length;
+        process.stdout.write(`\x1b[5A`);
+        render();
+        return;
+      }
+      if (key.name === "down") {
+        selectedIndex = (selectedIndex + 1) % options.length;
+        process.stdout.write(`\x1b[5A`);
+        render();
+        return;
+      }
+
+      if (key.name === "return" || key.name === "enter" || _str === " ") {
+        cleanup(options[selectedIndex]!.value);
+        return;
+      }
+
+      if (_str === "1") { cleanup(options[0]!.value); return; }
+      if (_str === "2") { cleanup(options[1]!.value); return; }
+      if (_str === "3") { cleanup(options[2]!.value); return; }
+      if (_str?.toLowerCase() === "y") { cleanup("yes"); return; }
+      if (_str?.toLowerCase() === "n") { cleanup("no"); return; }
+      if (_str?.toLowerCase() === "a") { cleanup("always"); return; }
+    };
+
+    process.stdin.on("keypress", onKeypress);
+    render();
   });
-
-  return decision;
 }
 
 export interface PromptQuestionParams {
