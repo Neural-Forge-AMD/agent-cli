@@ -246,7 +246,13 @@ export class InteractiveLineEditor {
       const cleanupAndResolve = (result: string) => {
         clearMenu();
         process.stdin.removeListener("keypress", onKeypress);
-        process.stdout.write("\n");
+        if (result.trim().length > 0 && !result.startsWith("/")) {
+          const chip = "\x1b[48;2;58;58;58m\x1b[38;2;160;160;160m ❯ \x1b[0m";
+          const body = `\x1b[48;2;58;58;58m\x1b[38;2;245;245;245m${result} \x1b[0m`;
+          process.stdout.write(`\r\x1b[2K  ${chip}${body}\n\n`);
+        } else {
+          process.stdout.write("\n");
+        }
         resolve(result);
       };
 
