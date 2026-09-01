@@ -2,7 +2,7 @@
  * Tool definitions and execution contract for Groupy.
  */
 
-import type { ExecPolicy } from "../security/exec-policy";
+import type { ExecPolicy, PermissionMode } from "../security/exec-policy";
 import type { PlanItem } from "../protocol/events";
 import type { PrefixRulesStore } from "../storage/prefix-rules-store";
 
@@ -27,6 +27,7 @@ export interface ToolContext {
   signal?: AbortSignal;
   execPolicy?: ExecPolicy;
   mode?: string;
+  permissionMode?: PermissionMode;
   prefixRulesStore?: PrefixRulesStore;
   onPlanUpdate?: (plan: PlanItem[], explanation?: string) => void;
   requestApproval?: (description: string, command?: string, prefixRule?: string[]) => Promise<{ allowed: boolean; rememberPrefix?: boolean } | boolean>;

@@ -71,7 +71,30 @@ export const writeFileTool: Tool = {
     required: ["path", "content"],
   },
   async execute(args, ctx): Promise<ToolExecutionResult> {
-    const filePath = resolve(ctx.cwd, String(args.path || ""));
+    const rawPath = String(args.path || "");
+    const filePath = resolve(ctx.cwd, rawPath);
+
+    // Permission & Plan Mode verification
+    if (ctx.execPolicy) {
+      const evalResult = ctx.execPolicy.shouldPromptFileEdit(rawPath);
+      if (evalResult.isPlanBlocked || ctx.mode === "plan") {
+        return {
+          output: "Error: Cannot write or mutate files while in Plan Mode. Please present the implementation plan first.",
+          isError: true,
+        };
+      }
+      if (evalResult.prompt && ctx.requestApproval) {
+        const approval = await ctx.requestApproval(
+          `Write file: ${rawPath}`,
+          `write_file ${rawPath}`
+        );
+        const allowed = typeof approval === "object" ? approval.allowed : Boolean(approval);
+        if (!allowed) {
+          return { output: `Action rejected by user: write_file '${rawPath}'`, isError: true };
+        }
+      }
+    }
+
     try {
       mkdirSync(dirname(filePath), { recursive: true });
       writeFileSync(filePath, String(args.content ?? ""), "utf8");

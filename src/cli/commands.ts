@@ -37,6 +37,11 @@ export const AVAILABLE_SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "/reasoning", description: "Toggle internal reasoning chain visibility" },
   { name: "/login", description: "Authenticate with backend provider" },
   { name: "/whoami", description: "Check backend authentication status" },
+  { name: "/mode", description: "Cycle or set execution permission mode (auto, manual, accept-edits, plan)" },
+  { name: "/auto", description: "Switch to Auto Mode (tools execute automatically)" },
+  { name: "/manual", description: "Switch to Manual Mode (all tools require user confirmation)" },
+  { name: "/accept-edits", description: "Switch to Accept Edits Mode (file edits auto-approved, shell prompts)" },
+  { name: "/plan", description: "Switch to Plan Mode (read-only planning, mutations blocked)" },
   { name: "/skills", description: "List domain skills in workspace & global" },
   { name: "/memories", description: "View learned preferences & memories" },
   { name: "/worktrees", description: "List active isolated Git Worktrees" },
@@ -110,6 +115,34 @@ export async function handleSlashCommand(
     case "/role":
     case "/roles":
       await handleRolesCommand(ctx, args[0]);
+      return true;
+
+    case "/mode":
+    case "/modes":
+    case "/permission":
+    case "/permissions":
+      await handleModeCommand(ctx, args[0]);
+      return true;
+
+    case "/auto":
+      ctx.session.setPermissionMode("auto");
+      console.log(`\n  \x1b[38;2;255;215;0m⏵⏵ Switched to Auto Mode (tools execute automatically)\x1b[0m\n`);
+      return true;
+
+    case "/manual":
+      ctx.session.setPermissionMode("manual");
+      console.log(`\n  \x1b[38;2;148;148;148m⏸ Switched to Manual Mode (all tools require user confirmation)\x1b[0m\n`);
+      return true;
+
+    case "/accept-edits":
+    case "/acceptedits":
+      ctx.session.setPermissionMode("accept-edits");
+      console.log(`\n  \x1b[38;2;175;175;215m⏵⏵ Switched to Accept Edits Mode (file edits auto-approved, shell prompts)\x1b[0m\n`);
+      return true;
+
+    case "/plan":
+      ctx.session.setPermissionMode("plan");
+      console.log(`\n  \x1b[38;2;95;175;175m⏸ Switched to Plan Mode (read-only planning, mutations blocked)\x1b[0m\n`);
       return true;
 
     case "/agents":
@@ -1064,6 +1097,84 @@ export function printReleaseNotes(): void {
   }
   console.log("  " + ROSE + "└" + "─".repeat(totalInnerWidth) + "┘" + RESET);
   console.log("");
+}
+
+export async function handleModeCommand(ctx: CommandContext, arg?: string): Promise<void> {
+  const validModes: Array<{ mode: "auto" | "manual" | "accept-edits" | "plan"; title: string; desc: string; glyph: string; color: string }> = [
+    {
+      mode: "auto",
+      title: "Auto Mode",
+      desc: "Tools run automatically without confirmation (fastest autonomous workflow)",
+      glyph: "⏵⏵",
+      color: "\x1b[38;2;255;215;0m",
+    },
+    {
+      mode: "manual",
+      title: "Manual Mode",
+      desc: "Every file edit and shell command asks for user confirmation",
+      glyph: "⏸",
+      color: "\x1b[38;2;148;148;148m",
+    },
+    {
+      mode: "accept-edits",
+      title: "Accept Edits Mode",
+      desc: "File edits are auto-approved, but shell commands require approval",
+      glyph: "⏵⏵",
+      color: "\x1b[38;2;175;175;215m",
+    },
+    {
+      mode: "plan",
+      title: "Plan Mode",
+      desc: "Read-only mode. Blocks all mutations and focuses strictly on planning",
+      glyph: "⏸",
+      color: "\x1b[38;2;95;175;175m",
+    },
+  ];
+
+  const currentMode = ctx.session.permissionMode;
+
+  if (arg) {
+    const normalized = arg.trim().toLowerCase();
+    const match = validModes.find((m) => m.mode === normalized || m.mode.replace("-", "") === normalized);
+    if (match) {
+      ctx.session.setPermissionMode(match.mode);
+      console.log(`\n  ${match.color}${match.glyph} Switched to ${match.title}\x1b[0m\n  ${style.dim(match.desc)}\n`);
+      return;
+    }
+  }
+
+  if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    console.log(`\n  Current Permission Mode: ${style.bold(currentMode)}`);
+    for (const m of validModes) {
+      const active = m.mode === currentMode ? " (active)" : "";
+      console.log(`  • ${m.title}${active}: ${m.desc}`);
+    }
+    console.log();
+    return;
+  }
+
+  const items = validModes.map((m) => ({
+    id: m.mode,
+    label: `${m.glyph} ${m.title}`,
+    badge: m.mode === currentMode ? "ACTIVE" : undefined,
+    description: m.desc,
+    checked: m.mode === currentMode,
+  }));
+
+  const res = await promptInteractiveList({
+    title: "🎛️ Select Execution Permission Mode (Shift+Tab in prompt to cycle)",
+    items,
+    mode: "select",
+    customKeyHints: "↑/↓: navigate · Enter: switch mode · Esc: cancel",
+  });
+
+  if (res.action === "select" && res.selectedItem) {
+    const chosen = validModes.find((m) => m.mode === res.selectedItem?.id);
+    if (chosen) {
+      ctx.session.setPermissionMode(chosen.mode);
+      console.log(`\n  ${chosen.color}${chosen.glyph} Switched to ${chosen.title}\x1b[0m\n  ${style.dim(chosen.desc)}\n`);
+    }
+  }
 }
 
 

@@ -4,10 +4,14 @@ import { AVAILABLE_SLASH_COMMANDS, type SlashCommandDef } from "../commands";
 import { FileSearchEngine } from "../../search/engine";
 import { CliFormatter } from "./formatter";
 
+export type ClaudeMode = "auto" | "manual" | "accept-edits" | "plan";
+
 export interface LineEditorOptions {
   promptSymbol?: string;
   cwd?: string;
+  initialMode?: ClaudeMode;
   onInterrupt?: () => void;
+  onModeChange?: (mode: ClaudeMode) => void;
 }
 
 // Global safety state for Windows Bun terminal
@@ -32,13 +36,55 @@ function ensureKeypressInitialized() {
 export class InteractiveLineEditor {
   private promptSymbol: string;
   private cwd: string;
+  private mode: ClaudeMode;
   private onInterrupt?: () => void;
+  private onModeChange?: (mode: ClaudeMode) => void;
   private searchEngine = new FileSearchEngine();
 
   constructor(options: LineEditorOptions = {}) {
     this.promptSymbol = options.promptSymbol || "  \x1b[38;2;192;202;245m❯\x1b[0m ";
     this.cwd = options.cwd || process.cwd();
+    this.mode = options.initialMode || "auto";
     this.onInterrupt = options.onInterrupt;
+    this.onModeChange = options.onModeChange;
+  }
+
+  public getMode(): ClaudeMode {
+    return this.mode;
+  }
+
+  public setMode(mode: ClaudeMode): void {
+    this.mode = mode;
+    this.onModeChange?.(mode);
+  }
+
+  public cycleMode(): ClaudeMode {
+    const modes: ClaudeMode[] = ["auto", "manual", "accept-edits", "plan"];
+    const nextIdx = (modes.indexOf(this.mode) + 1) % modes.length;
+    const next = modes[nextIdx]!;
+    this.setMode(next);
+    return next;
+  }
+
+  public cycleModeReverse(): ClaudeMode {
+    const modes: ClaudeMode[] = ["auto", "manual", "accept-edits", "plan"];
+    const nextIdx = (modes.indexOf(this.mode) - 1 + modes.length) % modes.length;
+    const next = modes[nextIdx]!;
+    this.setMode(next);
+    return next;
+  }
+
+  private getModeLine(): string {
+    switch (this.mode) {
+      case "auto":
+        return `  \x1b[38;2;255;215;0m⏵⏵ auto mode on\x1b[0m \x1b[38;2;148;148;148m(shift+tab to cycle) · ⇠ for agents\x1b[0m`;
+      case "manual":
+        return `  \x1b[38;2;148;148;148m⏸ manual mode on · ? for shortcuts · ⇠ for agents\x1b[0m`;
+      case "accept-edits":
+        return `  \x1b[38;2;175;175;215m⏵⏵ accept edits on\x1b[0m \x1b[38;2;148;148;148m(shift+tab to cycle) · ⇠ for agents\x1b[0m`;
+      case "plan":
+        return `  \x1b[38;2;95;175;175m⏸ plan mode on\x1b[0m \x1b[38;2;148;148;148m(shift+tab to cycle) · ⇠ for agents\x1b[0m`;
+    }
   }
 
   async readLine(): Promise<string> {
@@ -98,6 +144,12 @@ export class InteractiveLineEditor {
         }
       };
 
+      const getRule = () => {
+        const cols = typeof process.stdout?.columns === "number" ? process.stdout.columns : 80;
+        const ruleLen = Math.min(cols - 4, 70);
+        return "─".repeat(Math.max(10, ruleLen));
+      };
+
       const ensureVisible = (totalItems: number, visibleRows: number) => {
         if (totalItems === 0 || visibleRows === 0) {
           scrollTop = 0;
@@ -124,18 +176,18 @@ export class InteractiveLineEditor {
       };
 
       const redraw = () => {
-        // Clear menu first
-        clearMenu();
+        // Clear anything below current prompt line
+        process.stdout.write("\x1b[J");
 
-        // Clear current line and redraw prompt + buffer
+        // Render input prompt + buffer
         process.stdout.write(`\r\x1b[2K${this.promptSymbol}${buffer}`);
 
-        // 1. Slash commands popup
         const slashMatches = getMatchingCommands();
         const activeFile = getActiveFileQuery();
         const fileMatches = activeFile ? getMatchingFiles(activeFile.query) : [];
 
         if (buffer.startsWith("/") && !popupDismissed && slashMatches.length > 0) {
+          // 1. Slash commands popup
           const BOX_WIDTH = 70;
           const maxVisible = Math.min(slashMatches.length, 7);
 
@@ -171,13 +223,10 @@ export class InteractiveLineEditor {
 
           menuLines.push(`  ${RULE_COLOR}${rule}${RESET}`);
 
-          // Render menu below prompt
           for (const line of menuLines) {
             process.stdout.write(`\n\x1b[2K${line}`);
           }
           renderedMenuLines = menuLines.length;
-
-          // Move cursor back up to prompt line
           process.stdout.write(`\x1b[${renderedMenuLines}A`);
         } else if (activeFile && !popupDismissed && fileMatches.length > 0) {
           // 2. @file Autocomplete popup
@@ -225,6 +274,15 @@ export class InteractiveLineEditor {
           }
           renderedMenuLines = menuLines.length;
           process.stdout.write(`\x1b[${renderedMenuLines}A`);
+        } else {
+          // 3. Brainless Dual-rule Bottom Bar & Mode Status Line
+          const RULE_COLOR = "\x1b[38;2;60;60;68m";
+          const bottomRule = `  ${RULE_COLOR}${getRule()}\x1b[0m`;
+          const modeLine = this.getModeLine();
+
+          process.stdout.write(`\n\x1b[2K${bottomRule}\n\x1b[2K${modeLine}`);
+          renderedMenuLines = 2;
+          process.stdout.write(`\x1b[2A`);
         }
 
         // Place physical cursor at current buffer cursor position
@@ -328,7 +386,20 @@ export class InteractiveLineEditor {
           return;
         }
 
-        // Tab Autocomplete
+        // Shift+Tab -> Cycle Permission Mode (auto -> manual -> accept-edits -> plan)
+        const isShiftTab =
+          (key.name === "tab" && Boolean(key.shift)) ||
+          key.name === "backtab" ||
+          key.sequence === "\x1b[Z" ||
+          _str === "\x1b[Z";
+
+        if (isShiftTab) {
+          this.cycleMode();
+          redraw();
+          return;
+        }
+
+        // Tab Autocomplete (for files or slash commands, or fallback to cycle mode when buffer is empty)
         if (key.name === "tab") {
           if (activeFile && !popupDismissed && fileMatches.length > 0) {
             const chosen = fileMatches[selectedIndex] || fileMatches[0]!;
@@ -352,7 +423,14 @@ export class InteractiveLineEditor {
               scrollTop = 0;
               popupDismissed = false;
               redraw();
+              return;
             }
+          }
+
+          if (buffer.trim().length === 0) {
+            this.cycleMode();
+            redraw();
+            return;
           }
           return;
         }
@@ -430,8 +508,10 @@ export class InteractiveLineEditor {
 
       process.stdin.on("keypress", onKeypress);
 
-      // Initial prompt render
-      process.stdout.write(this.promptSymbol);
+      // Initial prompt render with top-rule
+      const RULE_COLOR = "\x1b[38;2;60;60;68m";
+      process.stdout.write(`\n  ${RULE_COLOR}${getRule()}\x1b[0m\n`);
+      redraw();
     });
   }
 }

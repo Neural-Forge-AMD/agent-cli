@@ -190,6 +190,7 @@ export async function runTurn(
               signal,
               execPolicy: session.execPolicy,
               mode: session.collaborationMode,
+              permissionMode: session.permissionMode,
               onPlanUpdate: (plan, explanation) => {
                 session.emitEvent({
                   type: "PlanUpdated",

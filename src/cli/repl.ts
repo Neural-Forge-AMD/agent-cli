@@ -310,6 +310,10 @@ export class CliRepl {
 
     const editor = new InteractiveLineEditor({
       cwd: this.session.cwd,
+      initialMode: this.session.permissionMode as any,
+      onModeChange: (newMode) => {
+        this.session.setPermissionMode(newMode);
+      },
       onInterrupt: () => {
         if (this.isProcessing) {
           const activeTurn = this.session.getActiveTurn();

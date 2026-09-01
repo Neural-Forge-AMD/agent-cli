@@ -48,6 +48,19 @@ export class Session {
   public readonly execPolicy: ExecPolicy;
   public collaborationMode: "default" | "plan" | "review" = "default";
 
+  public get permissionMode(): "auto" | "manual" | "accept-edits" | "plan" {
+    return this.execPolicy.getMode();
+  }
+
+  public setPermissionMode(mode: "auto" | "manual" | "accept-edits" | "plan"): void {
+    this.execPolicy.setMode(mode);
+    if (mode === "plan") {
+      this.collaborationMode = "plan";
+    } else if (this.collaborationMode === "plan") {
+      this.collaborationMode = "default";
+    }
+  }
+
   private history: ConversationItem[] = [];
   private activeTurn: TurnContext | null = null;
   private status: SessionStatus = "idle";

@@ -47,6 +47,27 @@ export const applyPatchTool: Tool = {
     const targetContent = typeof args.targetContent === "string" ? args.targetContent : "";
     const replacementContent = String(args.replacementContent ?? "");
 
+    // Permission & Plan Mode verification
+    if (ctx.execPolicy) {
+      const evalResult = ctx.execPolicy.shouldPromptFileEdit(rawPath);
+      if (evalResult.isPlanBlocked || ctx.mode === "plan") {
+        return {
+          output: "Error: Cannot mutate files while in Plan Mode. Please present the implementation plan first.",
+          isError: true,
+        };
+      }
+      if (evalResult.prompt && ctx.requestApproval) {
+        const approval = await ctx.requestApproval(
+          `Apply patch to: ${rawPath}`,
+          `apply_patch ${rawPath}`
+        );
+        const allowed = typeof approval === "object" ? approval.allowed : Boolean(approval);
+        if (!allowed) {
+          return { output: `Action rejected by user: apply_patch '${rawPath}'`, isError: true };
+        }
+      }
+    }
+
     // Case 1: Creating a new file
     if (!existsSync(filePath)) {
       if (targetContent) {
