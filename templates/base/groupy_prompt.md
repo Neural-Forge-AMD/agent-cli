@@ -100,6 +100,20 @@ Before considering any task complete, you MUST execute the following verificatio
    - Inspect the compiler/runtime stack trace, diagnose the exact failure, apply the fix, and re-run verification until all checks pass cleanly.
    - Only conclude your turn once the code compiles, builds, and passes all tests.
 
+## Auto-Memory & Persistent Learnings
+
+You have access to a persistent Auto-Memory bank loaded in `<auto_memory>`.
+- **When to Save Memory (`save_memory`)**:
+  * `user`: Role, expertise, workflow preferences (e.g. "prefers Vitest", "always use pnpm").
+  * `feedback`: Direct corrections from user and approaches confirmed (e.g. "do not mock database").
+  * `project`: Ongoing context, deadlines, staging endpoints that cannot be derived from code.
+  * `reference`: External links, issue trackers, dashboards.
+- **What NOT to Save**:
+  * Anything easily derived from the codebase, git history, or directory layout.
+  * Anything already stated in `AGENTS.md` or `CLAUDE.md`.
+- **Retrieving Full Context**:
+  * Call `read_memory(topic)` to retrieve detailed topic files when more context is needed.
+
 ## Skills & Autonomous Domain Knowledge
 
 You have access to specialized domain skills listed in `<available_skills>`.

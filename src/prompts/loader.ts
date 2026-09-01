@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import type { TemplateVariables } from "./types";
+import { getGlobalTemplatesDir } from "../config/paths";
 
 export class PromptTemplateLoader {
   private builtInTemplatesDir: string;
@@ -47,11 +48,18 @@ export class PromptTemplateLoader {
       }
     }
 
-    // 2. Global user override: ~/.groupy/templates/<relativePath>
-    const globalPath = join(homedir(), ".groupy", "templates", normalizedRel);
+    // 2. Global user override: ~/.pikaa/templates/<relativePath>
+    const globalPath = join(getGlobalTemplatesDir(), normalizedRel);
     if (existsSync(globalPath)) {
       try {
         return readFileSync(globalPath, "utf-8");
+      } catch {}
+    }
+
+    const legacyGlobalPath = join(homedir(), ".groupy", "templates", normalizedRel);
+    if (existsSync(legacyGlobalPath)) {
+      try {
+        return readFileSync(legacyGlobalPath, "utf-8");
       } catch {}
     }
 

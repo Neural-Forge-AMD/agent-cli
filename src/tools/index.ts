@@ -17,7 +17,7 @@ import { createCodeModeTools } from "../code-mode/tools";
 import type { SkillsLoader } from "../skills/loader";
 import { createSkillTool } from "../skills/tool";
 import type { MemoryStore } from "../memories/store";
-import { createRememberTool } from "../memories/tool";
+import { createAutoMemoryTools } from "../memories/tool";
 import type { WorktreeManager } from "../worktree/manager";
 import { createWorktreeTools } from "../worktree/tools";
 
@@ -56,7 +56,9 @@ export function createDefaultTools(options: DefaultToolsOptions = {}): ToolRoute
     router.register(createSkillTool(options.skillsLoader));
   }
   if (options.memoryStore) {
-    router.register(createRememberTool(options.memoryStore));
+    for (const tool of createAutoMemoryTools(options.memoryStore)) {
+      router.register(tool);
+    }
   }
   if (options.worktreeManager) {
     for (const tool of createWorktreeTools(options.worktreeManager)) {

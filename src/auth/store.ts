@@ -4,15 +4,15 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
-import { resolve } from "node:path";
-import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
 import type { AuthCredentials } from "./types";
+import { getCredentialsPath } from "../config/paths";
 
 export class CredentialsStore {
   private filePath: string;
 
   constructor(customPath?: string) {
-    this.filePath = customPath || resolve(homedir(), ".groupy", "credentials.json");
+    this.filePath = customPath || getCredentialsPath();
   }
 
   load(): AuthCredentials | null {

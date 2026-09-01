@@ -6,7 +6,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { homedir } from "node:os";
+import { getPrefixRulesDbPath } from "../config/paths";
 
 export interface ApprovedPrefixRuleRecord {
   id: string;
@@ -22,7 +22,7 @@ export class PrefixRulesStore {
     if (dbOrPath instanceof Database) {
       this.db = dbOrPath;
     } else {
-      const effectivePath = dbOrPath || resolve(homedir(), ".groupy", "groupy_rules.db");
+      const effectivePath = dbOrPath || getPrefixRulesDbPath();
       if (effectivePath !== ":memory:") {
         const dir = dirname(effectivePath);
         if (!existsSync(dir)) {

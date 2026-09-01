@@ -5,11 +5,11 @@
 
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { homedir } from "node:os";
+import { dirname } from "node:path";
 import type { Item } from "../protocol/items";
 import type { ThreadRecord, ThreadListOptions, RestoredSessionData } from "./types";
 import { GroupyError } from "../protocol/errors";
+import { getThreadsDbPath } from "../config/paths";
 
 export class SqliteThreadStore {
   private db: Database;
@@ -30,7 +30,7 @@ export class SqliteThreadStore {
   }
 
   private getDefaultDbPath(): string {
-    return resolve(homedir(), ".groupy", "groupy_threads.db");
+    return getThreadsDbPath();
   }
 
   private initSchema(): void {

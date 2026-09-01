@@ -6,7 +6,7 @@
 import { Database } from "bun:sqlite";
 import { resolve } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
+import { getAgentGraphDbPath } from "../config/paths";
 
 export type ThreadSpawnEdgeStatus = "open" | "closed";
 
@@ -25,9 +25,7 @@ export class AgentGraphStore {
     if (dbPathOrDb instanceof Database) {
       this.db = dbPathOrDb;
     } else {
-      const dbPath =
-        dbPathOrDb ||
-        resolve(homedir(), ".groupy", "agent_graph.db");
+      const dbPath = dbPathOrDb || getAgentGraphDbPath();
 
       if (dbPath !== ":memory:") {
         const dir = resolve(dbPath, "..");

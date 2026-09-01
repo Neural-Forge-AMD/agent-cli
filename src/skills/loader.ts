@@ -8,6 +8,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import type { SkillMetadata, LoadedSkill, SkillScope } from "./types";
+import { getGlobalSkillsDir } from "../config/paths";
 
 export interface SkillsLoaderOptions {
   customRoots?: string[];
@@ -136,7 +137,7 @@ export class SkillsLoader {
 
     if (this.includeGlobal) {
       roots.push(
-        resolve(homedir(), ".groupy", "skills"),
+        getGlobalSkillsDir(),
         resolve(homedir(), ".gemini", "config", "skills")
       );
     }

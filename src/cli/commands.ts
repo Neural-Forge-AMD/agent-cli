@@ -385,7 +385,7 @@ export async function handleInteractiveLogin(backendUrl?: string): Promise<void>
     console.log(style.dim(`Waiting for authorization callback on port 1455 ...`));
 
     const creds = await waitForToken();
-    console.log(style.green(`\n✓ Authentication Successful! Token saved to ~/.groupy/credentials.json`));
+    console.log(style.green(`\n✓ Authentication Successful! Token saved to ~/.pikaa/credentials.json`));
     console.log(style.dim(`  Gateway Base URL: ${creds.baseUrl}`));
   } catch (err) {
     console.log(style.yellow(`\nOAuth browser login failed: ${err instanceof Error ? err.message : String(err)}`));
@@ -404,7 +404,7 @@ export async function handleInteractiveLogin(backendUrl?: string): Promise<void>
         password,
       });
 
-      console.log(style.green(`\n✓ Successfully logged in! Token saved to ~/.groupy/credentials.json`));
+      console.log(style.green(`\n✓ Successfully logged in! Token saved to ~/.pikaa/credentials.json`));
       console.log(style.dim(`  Gateway Base URL: ${creds.baseUrl}`));
     } catch (directErr) {
       console.error(style.red(`\nDirect login failed: ${directErr instanceof Error ? directErr.message : String(directErr)}`));
@@ -624,7 +624,7 @@ async function handleSkillsCommand(ctx: CommandContext, args: string[]): Promise
 
   const skills = loader.listSkills(ctx.session.cwd, { includeDisabled: true });
   if (skills.length === 0) {
-    console.log(style.dim("\n  No domain skills discovered in .agents/skills/ or ~/.groupy/skills/\n"));
+    console.log(style.dim("\n  No domain skills discovered in .agents/skills/ or ~/.pikaa/skills/\n"));
     return;
   }
 
@@ -678,20 +678,56 @@ async function handleSkillsCommand(ctx: CommandContext, args: string[]): Promise
 function printMemories(ctx: CommandContext): void {
   const store = ctx.memoryStore;
   if (!store) {
-    console.log(style.yellow("Memory store not active."));
+    console.log(style.yellow("\n  Memory store not active.\n"));
     return;
   }
 
-  const memories = store.getAllMemories(ctx.session.cwd);
+  const cwd = ctx.session.cwd;
+  const memoryDir = store.getProjectMemoryDir(cwd);
+  const topics = store.listProjectMemories(cwd);
+  const indexContent = store.loadMemoryIndex(cwd);
+
+  const BOLD = "\x1b[1m";
+  const RESET = "\x1b[0m";
+  const DIM = "\x1b[2m";
+  const CYAN = "\x1b[38;2;120;190;255m";
+  const GREEN = "\x1b[38;2;140;220;140m";
+  const ORANGE = "\x1b[38;2;217;119;87m";
+  const PURPLE = "\x1b[38;2;190;140;240m";
+  const YELLOW = "\x1b[38;2;250;210;110m";
+
+  const getCategoryColor = (cat: string) => {
+    switch (cat.toLowerCase()) {
+      case "user":
+        return CYAN;
+      case "feedback":
+        return GREEN;
+      case "project":
+        return ORANGE;
+      case "reference":
+        return PURPLE;
+      default:
+        return YELLOW;
+    }
+  };
+
   console.log();
-  if (memories.length === 0) {
-    console.log(style.dim("  No persistent memories recorded yet."));
+  console.log(`  ${BOLD}🧠 Project Auto-Memory Bank${RESET}`);
+  console.log(`  ${DIM}Directory: ${memoryDir}${RESET}`);
+  console.log(`  ${DIM}Status: ${GREEN}Active (Loaded into turn context ≤200 lines)${RESET}`);
+  console.log();
+
+  if (topics.length === 0) {
+    console.log(`  ${DIM}No persistent topic memories saved for this project yet.${RESET}`);
+    console.log(`  ${DIM}As you work, Pikaa automatically records user preferences, feedback, and project context.${RESET}`);
   } else {
-    console.log(style.bold("  Learned Preferences & Memories:"));
-    for (const m of memories) {
-      console.log(`    • [${style.cyan(m.category)}] (${style.dim(m.scope)}): ${m.content}`);
+    console.log(`  ${BOLD}Learned Memory Topics (${topics.length}):${RESET}`);
+    for (const t of topics) {
+      const color = getCategoryColor(t.type);
+      console.log(`    • ${color}[${t.type}]${RESET} ${BOLD}${t.name}${RESET}: ${DIM}${t.description || t.content.split("\n")[0]}${RESET}`);
     }
   }
+
   console.log();
 }
 
@@ -1080,7 +1116,7 @@ export function printReleaseNotes(): void {
     "",
     "  " + BOLD + WHITE + "🚀 What's New in " + version + " (Latest)" + RESET,
     "  " + ROSE + "•" + RESET + " " + WHITE + BOLD + "Persistent Default AI Model" + RESET + ": Switch via " + ROSE + "/model" + RESET + " and save",
-    "    preference across sessions in ~/.groupy/credentials.json.",
+    "    preference across sessions in ~/.pikaa/credentials.json.",
     "  " + ROSE + "•" + RESET + " " + WHITE + BOLD + "Real-time Git Branch Detection" + RESET + ": Header displays active branch",
     "    ( main) alongside user subscription tier (Groupy Pro / Max).",
     "  " + ROSE + "•" + RESET + " " + WHITE + BOLD + "Claude Code Terminal UI Parity" + RESET + ": Authentic pixel emblem, fieldset",

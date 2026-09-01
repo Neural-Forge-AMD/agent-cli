@@ -259,7 +259,7 @@ async function handleLogin(authClient: AuthClient, backendUrl?: string): Promise
     console.log(style.dim(`\nWaiting for browser callback on http://localhost:1455/auth/callback ...`));
 
     const creds = await waitForToken();
-    console.log(style.green(`\n✓ Authentication Successful! Token saved to ~/.groupy/credentials.json`));
+    console.log(style.green(`\n✓ Authentication Successful! Token saved to ~/.pikaa/credentials.json`));
     console.log(style.dim(`  Gateway Base URL: ${creds.baseUrl}`));
   } catch (err) {
     console.log(style.yellow(`\nOAuth browser login failed: ${err instanceof Error ? err.message : String(err)}`));
@@ -279,7 +279,7 @@ async function handleLogin(authClient: AuthClient, backendUrl?: string): Promise
         password: password.trim(),
       });
 
-      console.log(style.green(`\n✓ Successfully logged in! Token saved to ~/.groupy/credentials.json`));
+      console.log(style.green(`\n✓ Successfully logged in! Token saved to ~/.pikaa/credentials.json`));
       console.log(style.dim(`  Gateway Base URL: ${creds.baseUrl}`));
     } catch (directErr) {
       rl.close();
@@ -355,7 +355,7 @@ function printSkillsList(loader: SkillsLoader, cwd: string): void {
   const skills = loader.discoverSkills(cwd);
   console.log();
   if (skills.length === 0) {
-    console.log(style.dim("No skills found in .agents/skills/ or ~/.groupy/skills/"));
+    console.log(style.dim("No skills found in .agents/skills/ or ~/.pikaa/skills/"));
   } else {
     console.log(style.bold("Discovered Domain Skills:"));
     for (const s of skills) {

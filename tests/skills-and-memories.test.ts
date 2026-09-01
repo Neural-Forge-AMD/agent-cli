@@ -184,8 +184,8 @@ Always use JWT with HTTP-only cookies.
   });
 
   test("remember tool allows LLM to record user preferences", async () => {
-    const memFile = join(testTmpDir, "memories.md");
-    const store = new MemoryStore({ globalPath: memFile });
+    const memDir = join(testTmpDir, "isolated_memory");
+    const store = new MemoryStore({ workspacePath: memDir });
     const router = new ToolRouter();
     router.register(createRememberTool(store));
 
@@ -241,7 +241,7 @@ Refactor surgically.
 
     expect(mockClient.lastSystemPrompt).toContain("Available Domain Skills");
     expect(mockClient.lastSystemPrompt).toContain("refactor-skill");
-    expect(mockClient.lastSystemPrompt).toContain("User Preferences & Memory Bank");
+    expect(mockClient.lastSystemPrompt).toContain("Auto-Memory");
     expect(mockClient.lastSystemPrompt).toContain("Do not use Tailwind");
   });
 });
