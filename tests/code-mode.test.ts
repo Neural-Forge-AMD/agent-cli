@@ -115,4 +115,22 @@ describe("Code-Mode Batch Execution Sandbox", () => {
     expect(toolCall.output).toContain("Loaded content: {\"ok\":true}");
     expect(existsSync(join(testDir, "tool_test.json"))).toBe(true);
   });
+
+  test("auto-transforms accidental ESM import statements from LLM into tools calls", async () => {
+    const toolCall = await router.execute(
+      "code_mode",
+      {
+        code: `
+          import { write_file, read_file } from "tools";
+          await write_file({ path: "esm_test.txt", content: "hello from esm" });
+          const content = await read_file({ path: "esm_test.txt" });
+          text("ESM Read: " + content);
+        `,
+      },
+      { cwd: testDir, turnId: "turn_code_mode_5" }
+    );
+
+    expect(toolCall.isError).toBeFalsy();
+    expect(toolCall.output).toContain("ESM Read: hello from esm");
+  });
 });

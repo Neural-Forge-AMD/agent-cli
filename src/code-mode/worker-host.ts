@@ -42,6 +42,19 @@ export class SandboxedWorkerHost {
         .replace(/\n?```$/, "");
     }
 
+    // Transform accidental ESM import syntax from LLM into global tools destructuring
+    // e.g. `import { list_dir, read_file } from "tools";` -> `const { list_dir, read_file } = tools;`
+    cleanCode = cleanCode.replace(/import\s*\{([^}]+)\}\s*from\s*['"][^'"]+['"];?/g, (_, imported) => {
+      return `const { ${imported} } = tools;`;
+    });
+    cleanCode = cleanCode.replace(/import\s*\*\s*as\s+(\w+)\s+from\s*['"][^'"]+['"];?/g, (_, varName) => {
+      return varName === "tools" ? "" : `const ${varName} = tools;`;
+    });
+    cleanCode = cleanCode.replace(/import\s+(\w+)\s+from\s*['"][^'"]+['"];?/g, (_, varName) => {
+      return varName === "tools" ? "" : `const ${varName} = tools;`;
+    });
+    cleanCode = cleanCode.replace(/import\s*['"][^'"]+['"];?/g, "");
+
     // Shadow dangerous runtime globals inside the execution wrapper
     const wrappedScript = `
       "use strict";
