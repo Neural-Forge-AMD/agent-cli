@@ -18,11 +18,10 @@ describe("Animated Banner Logo Subsystem", () => {
 
     try {
       BannerAnimator.renderStatic(sampleInfo);
-      expect(output).toContain("Groupy Build Beta");
-      expect(output).toContain("Groupy is here!");
-      expect(output).toContain("gpt-4o");
-      expect(output).toContain("ctrl+w");
-      expect(output).toContain("ctrl+s");
+      expect(output).toContain("Groupy Code");
+      expect(output).toContain("Welcome back");
+      expect(output).toContain("Tips for getting started");
+      expect(output).toContain("What's new");
     } finally {
       console.log = originalLog;
     }
@@ -38,8 +37,8 @@ describe("Animated Banner Logo Subsystem", () => {
     try {
       BannerAnimator.renderStatic(sampleInfo, { withShimmerSweep: true });
       const clean = output.replace(/\x1b\[[0-9;]*m/g, "");
-      expect(clean).toContain("Groupy Build Beta");
-      expect(clean).toContain("Groupy is here!");
+      expect(clean).toContain("Groupy Code");
+      expect(clean).toContain("Welcome back");
     } finally {
       console.log = originalLog;
     }

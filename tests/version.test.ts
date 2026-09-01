@@ -48,7 +48,7 @@ describe("CLI Version Auto-Detection Subsystem", () => {
         user: "test-user",
       });
 
-      expect(captured).toContain("Groupy Build Beta");
+      expect(captured).toContain("Groupy Code");
       expect(captured).toContain(getCliVersion({ prefix: true }));
     } finally {
       console.log = originalLog;
