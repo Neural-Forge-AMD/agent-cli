@@ -43,11 +43,11 @@ export function formatTaskStepStart(step: number, toolName: string, args: Record
   const argsSummary = Object.entries(args)
     .map(([k, v]) => {
       const valStr = typeof v === "string" ? `"${v.length > 35 ? v.slice(0, 32) + "..." : v}"` : JSON.stringify(v);
-      return `${style.dim(k)}=${style.cyan(valStr)}`;
+      return `${style.dim(k)}=\x1b[38;2;170;175;190m${valStr}\x1b[0m`;
     })
     .join(" ");
 
-  const dot = "\x1b[38;2;224;175;104m⏺\x1b[0m";
+  const dot = "\x1b[38;2;217;119;87m●\x1b[0m";
   console.log(`  ${dot} ${style.bold(toolName)} ${argsSummary ? `${style.dim("(")}${argsSummary}${style.dim(")")}` : ""}`);
 }
 
@@ -58,12 +58,11 @@ export function formatTaskStepFinish(
   output?: string,
   isError = false
 ): void {
-  const dot = isError ? "\x1b[38;2;247;118;142m⏺\x1b[0m" : "\x1b[38;2;78;169;111m⏺\x1b[0m";
+  const dot = isError ? "\x1b[38;2;247;118;142m●\x1b[0m" : "\x1b[38;2;78;169;111m●\x1b[0m";
   const toolNameDisplay = style.bold(toolName);
 
   if (toolName === "apply_patch" && typeof args.targetContent === "string" && typeof args.replacementContent === "string") {
     const targetFile = args.path ? String(args.path) : undefined;
-    console.log(`  ${dot} ${style.bold("Update")} ${style.dim(`(${targetFile || ""})`)}`);
     CliFormatter.formatPatchDiff(targetFile, args.targetContent, args.replacementContent);
     return;
   }
@@ -86,7 +85,7 @@ export function formatTaskStepFinish(
   const argsSummary = Object.entries(args)
     .map(([k, v]) => {
       const valStr = typeof v === "string" ? `"${v.length > 35 ? v.slice(0, 32) + "..." : v}"` : JSON.stringify(v);
-      return `${style.dim(k)}=${style.cyan(valStr)}`;
+      return `${style.dim(k)}=\x1b[38;2;170;175;190m${valStr}\x1b[0m`;
     })
     .join(" ");
 
@@ -192,11 +191,11 @@ export class CliFormatter {
     const argsSummary = Object.entries(args)
       .map(([k, v]) => {
         const valStr = typeof v === "string" ? `"${v.length > 40 ? v.slice(0, 37) + "..." : v}"` : JSON.stringify(v);
-        return `${style.dim(k)}=${style.cyan(valStr)}`;
+        return `${style.dim(k)}=\x1b[38;2;170;175;190m${valStr}\x1b[0m`;
       })
       .join(" ");
 
-    const dot = "\x1b[38;2;78;169;111m⏺\x1b[0m";
+    const dot = "\x1b[38;2;78;169;111m●\x1b[0m";
     console.log(`  ${dot} ${style.bold(toolName)} ${argsSummary ? `${style.dim("(")}${argsSummary}${style.dim(")")}` : ""}`);
   }
 
@@ -205,9 +204,9 @@ export class CliFormatter {
     if (lines.length === 0) return;
 
     if (filePath) {
-      const dot = "\x1b[38;2;78;169;111m⏺\x1b[0m";
+      const dot = "\x1b[38;2;78;169;111m●\x1b[0m";
       const arrow = "\x1b[38;2;86;95;137m⎿\x1b[0m";
-      console.log(`  ${dot} ${style.bold("Update")} \x1b[38;2;86;95;137m(\x1b[38;2;125;207;255m${filePath}\x1b[38;2;86;95;137m)\x1b[0m`);
+      console.log(`  ${dot} ${style.bold("Update")} \x1b[38;2;140;140;150m(\x1b[38;2;220;220;230m${filePath}\x1b[38;2;140;140;150m)\x1b[0m`);
       console.log(`    ${arrow} ${style.dim("Applied patch diff hunks")}`);
     }
 

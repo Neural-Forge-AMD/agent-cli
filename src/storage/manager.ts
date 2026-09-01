@@ -92,6 +92,14 @@ export class SessionPersistenceManager {
     return session;
   }
 
+  loadSession(threadId: string) {
+    try {
+      return this.store.restoreSession(threadId);
+    } catch {
+      return null;
+    }
+  }
+
   listSessions(options?: ThreadListOptions): ThreadRecord[] {
     return this.store.listThreads(options);
   }

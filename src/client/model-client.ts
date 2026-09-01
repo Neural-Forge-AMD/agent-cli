@@ -166,7 +166,7 @@ export class DefaultModelClientSession implements ModelClientSession {
         if (toolCalls.length > 0) {
           messages.push({
             role: "assistant",
-            content: null,
+            content: cleanedContent || null,
             tool_calls: toolCalls,
           });
           i = j - 1; // advance past consumed function calls
@@ -384,6 +384,7 @@ export class DefaultModelClientSession implements ModelClientSession {
           if (dataStr === "[DONE]") {
             // Emit any collected tool calls
             for (const tc of pendingToolCalls.values()) {
+              if (!tc.name || !tc.name.trim()) continue;
               let parsedArgs = {};
               try {
                 parsedArgs = JSON.parse(tc.arguments);
@@ -510,6 +511,7 @@ export class DefaultModelClientSession implements ModelClientSession {
 
       // Final flush if [DONE] was missing
       for (const tc of pendingToolCalls.values()) {
+        if (!tc.name || !tc.name.trim()) continue;
         let parsedArgs = {};
         try {
           parsedArgs = JSON.parse(tc.arguments);

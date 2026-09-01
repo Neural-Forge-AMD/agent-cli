@@ -344,3 +344,264 @@ export async function promptUserQuestion(params: PromptQuestionParams): Promise<
     });
   });
 }
+
+export interface InteractiveListItem {
+  id: string;
+  label: string;
+  description?: string;
+  badge?: string;
+  checked?: boolean;
+  disabled?: boolean;
+}
+
+export interface InteractiveListConfig {
+  title: string;
+  items: InteractiveListItem[];
+  mode?: "select" | "toggle";
+  defaultIndex?: number;
+  maxVisible?: number;
+  emptyMessage?: string;
+  onToggle?: (item: InteractiveListItem, index: number) => void | Promise<void>;
+  onAction?: (keyName: string, item: InteractiveListItem, index: number) => boolean | Promise<boolean>;
+  customKeyHints?: string;
+}
+
+export interface InteractiveListResult {
+  selectedIndex: number;
+  selectedItem?: InteractiveListItem;
+  action: "select" | "toggle" | "close" | "custom";
+  keyName?: string;
+}
+
+/**
+ * Interactive full-screen / scrollable list selector and toggle manager.
+ * Supports ↑/↓ navigation, Space to toggle, Enter to confirm, and custom hotkeys.
+ */
+export async function promptInteractiveList(config: InteractiveListConfig): Promise<InteractiveListResult> {
+  const {
+    title,
+    items,
+    mode = "select",
+    defaultIndex = 0,
+    maxVisible = 8,
+    emptyMessage = "No items available.",
+    onToggle,
+    onAction,
+    customKeyHints,
+  } = config;
+
+  if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    return {
+      selectedIndex: defaultIndex,
+      selectedItem: items[defaultIndex] || items[0],
+      action: "select",
+    };
+  }
+
+  if (items.length === 0) {
+    console.log(`\n  ${style.dim(emptyMessage)}\n`);
+    return { selectedIndex: -1, action: "close" };
+  }
+
+  return new Promise<InteractiveListResult>((resolve) => {
+    let selectedIndex = Math.max(0, Math.min(defaultIndex, items.length - 1));
+    let scrollTop = 0;
+    let renderedLines = 0;
+
+    readline.emitKeypressEvents(process.stdin);
+    const wasRaw = process.stdin.isRaw;
+    try {
+      process.stdin.setRawMode(true);
+    } catch {}
+    process.stdin.resume();
+
+    // Hide cursor during interactive menu navigation to prevent cursor jump flicker
+    process.stdout.write("\x1b[?25l");
+
+    const BOX_WIDTH = Math.min(process.stdout.columns ?? 80, 76);
+
+    const ensureVisible = () => {
+      const visibleCount = Math.min(items.length, maxVisible);
+      if (selectedIndex < scrollTop) {
+        scrollTop = selectedIndex;
+      } else if (selectedIndex >= scrollTop + visibleCount) {
+        scrollTop = selectedIndex + 1 - visibleCount;
+      }
+      if (scrollTop < 0) scrollTop = 0;
+      const maxScroll = Math.max(0, items.length - visibleCount);
+      if (scrollTop > maxScroll) scrollTop = maxScroll;
+    };
+
+    const render = () => {
+      ensureVisible();
+
+      const visibleCount = Math.min(items.length, maxVisible);
+      const visibleItems = items.slice(scrollTop, scrollTop + visibleCount);
+      const lines: string[] = [];
+
+      // 1. Header
+      const headerBorder = "─".repeat(Math.max(10, BOX_WIDTH - title.length - 8));
+      lines.push(`  \x1b[38;2;140;140;150m┌──\x1b[0m ${style.bold(title)} \x1b[38;2;140;140;150m${headerBorder}┐\x1b[0m`);
+
+      // 2. Items
+      for (let i = 0; i < visibleItems.length; i++) {
+        const item = visibleItems[i]!;
+        const actualIdx = scrollTop + i;
+        const isCurrent = actualIdx === selectedIndex;
+        const marker = isCurrent ? "\x1b[38;2;217;119;87m❯\x1b[0m" : " ";
+
+        let checkSymbol = "";
+        if (mode === "toggle") {
+          checkSymbol = item.checked
+            ? "\x1b[38;2;78;169;111m[✔ ENABLED]\x1b[0m "
+            : "\x1b[38;2;120;120;125m[○ DISABLED]\x1b[0m";
+        } else if (item.checked !== undefined) {
+          checkSymbol = item.checked
+            ? "\x1b[38;2;78;169;111m(●)\x1b[0m "
+            : "\x1b[38;2;120;120;125m(○)\x1b[0m ";
+        }
+
+        const badgeStr = item.badge ? ` ${style.dim(`(${item.badge})`)}` : "";
+        const labelStr = isCurrent ? style.bold(item.label) : item.label;
+
+        lines.push(`  \x1b[38;2;140;140;150m│\x1b[0m ${marker} ${checkSymbol} ${labelStr}${badgeStr}`);
+        if (item.description) {
+          const descIndent = " ".repeat(mode === "toggle" ? 17 : 7);
+          const maxDescLen = BOX_WIDTH - descIndent.length - 6;
+          const trimmedDesc = item.description.length > maxDescLen
+            ? item.description.slice(0, maxDescLen - 3) + "..."
+            : item.description;
+          lines.push(`  \x1b[38;2;140;140;150m│\x1b[0m ${descIndent}${style.dim(trimmedDesc)}`);
+        }
+      }
+
+      // 3. Scroll indicator / footer
+      const moreAbove = scrollTop;
+      const moreBelow = Math.max(0, items.length - (scrollTop + visibleCount));
+      let scrollInfo = "";
+      if (moreAbove > 0 && moreBelow > 0) {
+        scrollInfo = `[↑ ${moreAbove} more · ↓ ${moreBelow} more]`;
+      } else if (moreBelow > 0) {
+        scrollInfo = `[↓ ${moreBelow} more below]`;
+      } else if (moreAbove > 0) {
+        scrollInfo = `[↑ ${moreAbove} more above]`;
+      }
+
+      const defaultHints = mode === "toggle"
+        ? "↑/↓: navigate · Space: toggle · a: all · d: none · Enter/Esc: done"
+        : "↑/↓: navigate · Enter: select · Esc: cancel";
+      const hintText = customKeyHints || (scrollInfo ? `${scrollInfo} ${defaultHints}` : defaultHints);
+
+      lines.push(`  \x1b[38;2;140;140;150m│\x1b[0m`);
+      lines.push(`  \x1b[38;2;140;140;150m│\x1b[0m  ${style.dim(hintText)}`);
+      lines.push(`  \x1b[38;2;140;140;150m└──${"─".repeat(Math.max(10, BOX_WIDTH - 6))}┘\x1b[0m`);
+
+      // Atomic overwrite to eliminate terminal tearing / flicker
+      let buffer = "";
+      if (renderedLines > 0) {
+        buffer += `\x1b[${renderedLines}A\r`;
+      }
+      buffer += lines.map((l) => `\x1b[2K${l}`).join("\n") + "\n";
+      if (renderedLines > lines.length) {
+        buffer += "\x1b[J";
+      }
+
+      process.stdout.write(buffer);
+      renderedLines = lines.length;
+    };
+
+    const cleanup = (res: InteractiveListResult) => {
+      // Clear menu box and restore cursor
+      if (renderedLines > 0) {
+        process.stdout.write(`\x1b[${renderedLines}A\r\x1b[J\x1b[?25h`);
+        renderedLines = 0;
+      } else {
+        process.stdout.write("\x1b[?25h");
+      }
+      process.stdin.removeListener("keypress", onKeypress);
+      try {
+        process.stdin.setRawMode(wasRaw ?? false);
+      } catch {}
+      resolve(res);
+    };
+
+    const onKeypress = async (_str: string, key: readline.Key) => {
+      if (!key) return;
+
+      // Ctrl+C / Escape / q
+      if ((key.ctrl && key.name === "c") || key.name === "escape" || _str === "q" || _str === "Q") {
+        cleanup({
+          selectedIndex,
+          selectedItem: items[selectedIndex],
+          action: "close",
+        });
+        return;
+      }
+
+      // Up Arrow / k
+      if (key.name === "up" || _str === "k") {
+        selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+        render();
+        return;
+      }
+
+      // Down Arrow / j
+      if (key.name === "down" || _str === "j") {
+        selectedIndex = (selectedIndex + 1) % items.length;
+        render();
+        return;
+      }
+
+      // Space / t -> Toggle
+      if (_str === " " || _str === "t" || _str === "T") {
+        const item = items[selectedIndex];
+        if (item) {
+          item.checked = !item.checked;
+          if (onToggle) {
+            await onToggle(item, selectedIndex);
+          }
+        }
+        render();
+        return;
+      }
+
+      // Enter
+      if (key.name === "return" || key.name === "enter") {
+        if (mode === "toggle") {
+          cleanup({
+            selectedIndex,
+            selectedItem: items[selectedIndex],
+            action: "close",
+          });
+        } else {
+          cleanup({
+            selectedIndex,
+            selectedItem: items[selectedIndex],
+            action: "select",
+          });
+        }
+        return;
+      }
+
+      // Custom action handler (e.g. 'd' for delete, 'a' for enable-all, etc.)
+      if (_str && onAction) {
+        const item = items[selectedIndex]!;
+        const shouldExit = await onAction(_str.toLowerCase(), item, selectedIndex);
+        if (shouldExit) {
+          cleanup({
+            selectedIndex,
+            selectedItem: item,
+            action: "custom",
+            keyName: _str.toLowerCase(),
+          });
+          return;
+        }
+        render();
+      }
+    };
+
+    process.stdin.on("keypress", onKeypress);
+    render();
+  });
+}
+

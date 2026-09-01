@@ -12,7 +12,6 @@ export interface LineEditorOptions {
 
 // Global safety state for Windows Bun terminal
 let keypressEventsInitialized = false;
-let globalRawMode = false;
 
 function ensureKeypressInitialized() {
   if (!keypressEventsInitialized && process.stdin.isTTY) {
@@ -21,7 +20,7 @@ function ensureKeypressInitialized() {
 
     // Safety restore on unhandled exit
     process.on("exit", () => {
-      if (globalRawMode && process.stdin.isTTY) {
+      if (process.stdin.isTTY) {
         try {
           process.stdin.setRawMode(false);
         } catch {}
@@ -64,10 +63,9 @@ export class InteractiveLineEditor {
       let renderedMenuLines = 0;
       let popupDismissed = false;
 
-      if (!globalRawMode && process.stdin.isTTY) {
+      if (process.stdin.isTTY) {
         try {
           process.stdin.setRawMode(true);
-          globalRawMode = true;
         } catch {}
       }
       process.stdin.resume();
@@ -120,12 +118,7 @@ export class InteractiveLineEditor {
 
       const clearMenu = () => {
         if (renderedMenuLines > 0) {
-          // Move down and clear each menu line
-          for (let i = 0; i < renderedMenuLines; i++) {
-            process.stdout.write("\n\x1b[2K");
-          }
-          // Move back up to prompt line
-          process.stdout.write(`\x1b[${renderedMenuLines}A\r`);
+          process.stdout.write("\x1b[J");
           renderedMenuLines = 0;
         }
       };
@@ -247,6 +240,11 @@ export class InteractiveLineEditor {
       const cleanupAndResolve = (result: string) => {
         clearMenu();
         process.stdin.removeListener("keypress", onKeypress);
+        if (process.stdin.isTTY) {
+          try {
+            process.stdin.setRawMode(false);
+          } catch {}
+        }
         if (result.trim().length > 0 && !result.startsWith("/")) {
           process.stdout.write(`\r\x1b[2K${CliFormatter.formatClaudeUserPrompt(result)}\n\n`);
         } else {
@@ -270,10 +268,9 @@ export class InteractiveLineEditor {
             return;
           }
           clearMenu();
-          if (globalRawMode && process.stdin.isTTY) {
+          if (process.stdin.isTTY) {
             try {
               process.stdin.setRawMode(false);
-              globalRawMode = false;
             } catch {}
           }
           process.stdin.removeListener("keypress", onKeypress);
@@ -420,9 +417,10 @@ export class InteractiveLineEditor {
         }
 
         // Normal typing character
-        if (_str && !key.ctrl && !key.meta) {
-          buffer = buffer.slice(0, cursor) + _str + buffer.slice(cursor);
-          cursor += _str.length;
+        const char = _str || key.sequence || (key.name && key.name.length === 1 ? key.name : "");
+        if (char && !key.ctrl && !key.meta && char !== "\r" && char !== "\n") {
+          buffer = buffer.slice(0, cursor) + char + buffer.slice(cursor);
+          cursor += char.length;
           selectedIndex = 0;
           scrollTop = 0;
           popupDismissed = false;

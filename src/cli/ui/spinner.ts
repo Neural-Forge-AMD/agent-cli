@@ -122,20 +122,27 @@ export class LiveSpinner {
     this.enableShimmer = enabled;
   }
 
-  start(message = "Thinking..."): void {
+  start(message = "Thinking...", customStartTime?: number): void {
     if (this.isSpinning) {
+      if (customStartTime !== undefined) {
+        this.startTime = customStartTime;
+      }
       this.update(message);
       return;
     }
 
     this.isSpinning = true;
     this.currentMessage = message;
-    this.startTime = performance.now();
+    this.startTime = customStartTime !== undefined ? customStartTime : performance.now();
     this.frameIndex = 0;
 
     // Render immediately
     this.render();
     this.restartTimer();
+  }
+
+  setStartTime(timeMs: number): void {
+    this.startTime = timeMs;
   }
 
   private restartTimer(): void {
@@ -221,10 +228,10 @@ export class ClaudeThinkingSpinner {
   private startTime = 0;
   private lastVerbChange = 0;
 
-  start(): void {
+  start(customStartTime?: number): void {
     if (this.isSpinning) return;
     this.isSpinning = true;
-    this.startTime = performance.now();
+    this.startTime = customStartTime !== undefined ? customStartTime : performance.now();
     this.lastVerbChange = performance.now();
     this.frameIndex = 0;
     this.verbIndex = 0;

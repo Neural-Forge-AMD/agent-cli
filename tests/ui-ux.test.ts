@@ -91,7 +91,7 @@ describe("CLI UX & Turn Metrics Subsystem", () => {
       formatTaskStepStart(1, "read_file", { path: "src/cli/repl.ts" });
       formatTaskStepFinish(1, "read_file", { path: "src/cli/repl.ts" }, "line 1\nline 2\nline 3", false);
 
-      expect(output).toContain("⏺");
+      expect(output).toContain("●");
       expect(output).toContain("read_file");
       expect(output).toContain("⎿");
       expect(output).toContain("3 lines read");

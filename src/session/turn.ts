@@ -156,6 +156,8 @@ export async function runTurn(
       // If one or more tool calls were requested, execute them and continue the loop
       if (toolCallRequests.length > 0) {
         for (const toolCall of toolCallRequests) {
+          if (!toolCall.name || !toolCall.name.trim()) continue;
+
           const functionCallItem: FunctionCallItem = {
             id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
             type: "function_call",

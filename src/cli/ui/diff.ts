@@ -185,7 +185,7 @@ export function renderDiff(lines: DiffLine[], opts: RenderDiffOptions = {}): str
   if (opts.filePath) {
     const headerText = `  ${opts.filePath}`;
     const padded = headerText.padEnd(termWidth);
-    out.push(`${ESC}48;2;30;30;40m${ESC}38;2;200;180;255m${ESC}1m${padded}${R}`);
+    out.push(`${ESC}48;2;36;36;42m${ESC}38;2;230;230;235m${ESC}1m${padded}${R}`);
   }
 
   // Pair consecutive del/add runs for word-level diff

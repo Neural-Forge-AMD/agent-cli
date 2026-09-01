@@ -7,6 +7,7 @@ import { InteractiveLineEditor } from "./ui/line-editor";
 import { formatDuration } from "./ui/spinner";
 import { AsciiAnimation, ALL_ANIMATION_VARIANTS, type AnimationVariant } from "./ui/animation";
 import { CliFormatter } from "./ui/formatter";
+import { promptInteractiveList, promptChoice } from "./ui/prompt";
 import { estimateTotalTokens } from "../context/compactor";
 import { CredentialsStore } from "../auth/store";
 import { AuthClient } from "../auth/oauth";
@@ -73,7 +74,7 @@ export async function handleSlashCommand(
     case "/":
     case "/?":
     case "/help":
-      printHelp();
+      await printHelp(ctx);
       return true;
 
     case "/stats":
@@ -90,13 +91,7 @@ export async function handleSlashCommand(
     case "/reasoning":
     case "/think":
     case "/thinking":
-      if (ctx.repl) {
-        ctx.repl.showReasoning = !ctx.repl.showReasoning;
-        const stateStr = ctx.repl.showReasoning ? style.green("Visible") : style.yellow("Hidden (default)");
-        console.log(`\n  Reasoning display: [${stateStr}]\n`);
-      } else {
-        console.log(style.dim("\n  Reasoning display is hidden by default.\n"));
-      }
+      await handleReasoningCommand(ctx, args[0]);
       return true;
 
     case "/login":
@@ -126,7 +121,7 @@ export async function handleSlashCommand(
 
     case "/skills":
     case "/skill":
-      handleSkillsCommand(ctx, args);
+      await handleSkillsCommand(ctx, args);
       return true;
 
     case "/memories":
@@ -140,7 +135,8 @@ export async function handleSlashCommand(
       return true;
 
     case "/sessions":
-      printSessions(ctx);
+    case "/session":
+      await printSessions(ctx);
       return true;
 
     case "/security":
@@ -186,21 +182,79 @@ export async function handleSlashCommand(
   }
 }
 
-export function printHelp(): void {
-  console.log();
-  console.log(style.bold("  Available Slash Commands:"));
-  for (const cmd of AVAILABLE_SLASH_COMMANDS) {
-    const pad = cmd.name.padEnd(12, " ");
-    console.log(`    ${style.cyan(pad)} ${style.dim(cmd.description)}`);
+export async function printHelp(ctx?: CommandContext): Promise<void> {
+  if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    console.log();
+    console.log(style.bold("  Available Slash Commands:"));
+    for (const cmd of AVAILABLE_SLASH_COMMANDS) {
+      const pad = cmd.name.padEnd(12, " ");
+      console.log(`    ${style.cyan(pad)} ${style.dim(cmd.description)}`);
+    }
+    console.log();
+    return;
   }
-  console.log();
+
+  const items = AVAILABLE_SLASH_COMMANDS.map((c) => ({
+    id: c.name,
+    label: c.name,
+    description: c.description,
+  }));
+
+  const res = await promptInteractiveList({
+    title: "⚡ Slash Commands Palette",
+    items,
+    mode: "select",
+    maxVisible: 10,
+    customKeyHints: "↑/↓: navigate · Enter: run command · Esc: close",
+  });
+
+  if (res.action === "select" && res.selectedItem && ctx) {
+    console.log(style.dim(`\n  Executing ${res.selectedItem.id} ...\n`));
+    await handleSlashCommand(res.selectedItem.id, ctx);
+  }
+}
+
+export async function handleReasoningCommand(ctx: CommandContext, arg?: string): Promise<void> {
+  if (!ctx.repl) {
+    console.log(style.dim("\n  Reasoning display is hidden by default.\n"));
+    return;
+  }
+
+  if (arg) {
+    const lower = arg.toLowerCase();
+    if (lower === "on" || lower === "show" || lower === "true") {
+      ctx.repl.showReasoning = true;
+    } else if (lower === "off" || lower === "hide" || lower === "false") {
+      ctx.repl.showReasoning = false;
+    } else {
+      ctx.repl.showReasoning = !ctx.repl.showReasoning;
+    }
+    const stateStr = ctx.repl.showReasoning ? style.green("Visible") : style.yellow("Hidden (default)");
+    console.log(`\n  Reasoning display: [${stateStr}]\n`);
+    return;
+  }
+
+  const current = ctx.repl.showReasoning;
+  const choice = await promptChoice({
+    message: `AI Reasoning Stream (Currently: ${current ? "Visible" : "Hidden"}):`,
+    choices: [
+      { key: "h", label: "Hidden (in spinner)", value: false, isDefault: !current },
+      { key: "v", label: "Visible (live stream)", value: true, isDefault: current },
+      { key: "t", label: "Toggle state", value: !current },
+    ],
+    defaultIndex: current ? 1 : 0,
+  });
+
+  ctx.repl.showReasoning = choice;
+  const stateStr = ctx.repl.showReasoning ? style.green("Visible") : style.yellow("Hidden (default)");
+  console.log(`\n  Reasoning display updated to: [${stateStr}]\n`);
 }
 
 export async function handleModelSelection(ctx: CommandContext, modelArg?: string): Promise<void> {
   if (modelArg && modelArg.trim().length > 0) {
     const chosen = modelArg.trim();
     ctx.session.model = chosen;
-    console.log(style.green(`\n✓ Active model switched to: ${style.bold(chosen)}\n`));
+    console.log(style.green(`\n  ✓ Active model switched to: ${style.bold(chosen)}\n`));
     return;
   }
 
@@ -208,7 +262,6 @@ export async function handleModelSelection(ctx: CommandContext, modelArg?: strin
   const baseUrl = creds?.baseUrl || process.env.GROUPY_BASE_URL || "https://api.groupy-hub.store/v1";
   const apiKey = creds?.accessToken || process.env.GROUPY_API_KEY;
 
-  console.log(style.dim(`\n  Fetching models from ${baseUrl}/models ...`));
   let models: Array<{ id: string; owned_by?: string }> = [];
 
   try {
@@ -222,45 +275,38 @@ export async function handleModelSelection(ctx: CommandContext, modelArg?: strin
     }
   } catch {}
 
-  console.log();
-  console.log(style.bold("  Available Models:"));
-
   if (models.length === 0) {
-    console.log(style.dim("    (No remote models returned by provider)"));
-    console.log(`    Current Model: ${style.brandBold(ctx.session.model)}`);
-  } else {
-    for (let i = 0; i < models.length; i++) {
-      const m = models[i]!;
-      const isActive = m.id.toLowerCase() === ctx.session.model.toLowerCase();
-      const tag = isActive ? style.green(" (active)") : "";
-      const owner = m.owned_by ? style.dim(` (${m.owned_by})`) : "";
-      console.log(`    [${style.cyan(String(i + 1))}] ${style.bold(m.id)}${owner}${tag}`);
-    }
+    models = [
+      { id: "gemini-2.5-flash", owned_by: "google" },
+      { id: "claude-3-5-sonnet", owned_by: "anthropic" },
+      { id: "gpt-4o", owned_by: "openai" },
+      { id: "deepseek-r1", owned_by: "deepseek" },
+      { id: "qwen-2.5-coder", owned_by: "alibaba" },
+    ];
   }
 
-  console.log();
+  const items = models.map((m) => ({
+    id: m.id,
+    label: m.id,
+    badge: m.owned_by ? `provider: ${m.owned_by}` : undefined,
+    checked: m.id.toLowerCase() === ctx.session.model.toLowerCase(),
+  }));
 
-  const promptText = models.length > 0
-    ? `  Select model [1-${models.length}] or type model name: `
-    : `  Enter new model name: `;
+  const activeIdx = Math.max(0, models.findIndex((m) => m.id.toLowerCase() === ctx.session.model.toLowerCase()));
 
-  const promptEditor = new InteractiveLineEditor({ promptSymbol: promptText });
-  const rawAnswer = await promptEditor.readLine();
-  const answer = rawAnswer.trim();
+  const res = await promptInteractiveList({
+    title: `🤖 Select Active AI Model (Current: ${ctx.session.model})`,
+    items,
+    mode: "select",
+    defaultIndex: activeIdx,
+    customKeyHints: "↑/↓: navigate · Enter: switch active model · Esc: keep current",
+  });
 
-  if (!answer) {
-    console.log(style.dim("  Model unchanged.\n"));
-    return;
-  }
-
-  const num = parseInt(answer, 10);
-  if (!isNaN(num) && num >= 1 && num <= models.length) {
-    const chosen = models[num - 1]!.id;
-    ctx.session.model = chosen;
-    console.log(style.green(`\n  ✓ Active model switched to: ${style.bold(chosen)}\n`));
+  if (res.action === "select" && res.selectedItem) {
+    ctx.session.model = res.selectedItem.id;
+    console.log(style.green(`\n  ✓ Active model switched to: ${style.bold(res.selectedItem.id)}\n`));
   } else {
-    ctx.session.model = answer;
-    console.log(style.green(`\n  ✓ Active model switched to: ${style.bold(answer)}\n`));
+    console.log(style.dim("\n  Model unchanged.\n"));
   }
 }
 
@@ -335,17 +381,35 @@ async function printWorktrees(ctx: CommandContext): Promise<void> {
   }
 
   const worktrees = await manager.listWorktrees(ctx.session.cwd);
-  console.log();
   if (worktrees.length === 0) {
-    console.log(style.dim("  No Git Worktrees active or directory is not a Git repo."));
-  } else {
+    console.log(style.dim("\n  No Git Worktrees active or directory is not a Git repo.\n"));
+    return;
+  }
+
+  if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    console.log();
     console.log(style.bold("  Active Git Worktrees:"));
     for (const w of worktrees) {
       const typeTag = w.isMain ? style.cyan("[MAIN]") : style.yellow("[ISOLATED WORKTREE]");
       console.log(`    • ${typeTag} ${style.bold(w.branch)}: ${style.dim(w.path)}`);
     }
+    console.log();
+    return;
   }
-  console.log();
+
+  const items = worktrees.map((w) => ({
+    id: w.branch,
+    label: `${w.isMain ? "[MAIN]" : "[WORKTREE]"} ${w.branch}`,
+    description: w.path,
+    badge: w.isMain ? "main repo" : "isolated",
+  }));
+
+  await promptInteractiveList({
+    title: `🌳 Active Git Worktrees (${worktrees.length} branches)`,
+    items,
+    mode: "select",
+    customKeyHints: "↑/↓: navigate · Esc: exit",
+  });
 }
 
 function printRoles(ctx: CommandContext): void {
@@ -395,30 +459,7 @@ function printAgents(ctx: CommandContext): void {
   console.log();
 }
 
-function printMcp(ctx: CommandContext): void {
-  const mcp = ctx.mcpManager;
-  if (!mcp) {
-    console.log(style.yellow("MCP Manager not initialized."));
-    return;
-  }
-
-  const servers = mcp.listServers();
-  console.log();
-  if (servers.length === 0) {
-    console.log(style.dim("  No MCP servers connected."));
-    console.log(style.dim("  Create a .mcp.json or mcp_config.json file to connect external tools."));
-  } else {
-    console.log(style.bold("  Connected Model Context Protocol (MCP) Servers:"));
-    for (const s of servers) {
-      const status = s.connected ? style.green("Connected") : style.red("Disconnected");
-      console.log(`    • ${style.cyan(s.name)} [${status}]`);
-      console.log(`      Tools: ${s.toolsCount} registered | Resources: ${s.resourcesCount} available`);
-    }
-  }
-  console.log();
-}
-
-function handleSkillsCommand(ctx: CommandContext, args: string[]): void {
+async function handleSkillsCommand(ctx: CommandContext, args: string[]): Promise<void> {
   const loader = ctx.skillsLoader;
   if (!loader) {
     console.log(style.yellow("Skills loader not active."));
@@ -463,10 +504,13 @@ function handleSkillsCommand(ctx: CommandContext, args: string[]): void {
   }
 
   const skills = loader.listSkills(ctx.session.cwd, { includeDisabled: true });
-  console.log();
   if (skills.length === 0) {
-    console.log(style.dim("  No domain skills discovered in .agents/skills/ or ~/.groupy/skills/"));
-  } else {
+    console.log(style.dim("\n  No domain skills discovered in .agents/skills/ or ~/.groupy/skills/\n"));
+    return;
+  }
+
+  if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    console.log();
     console.log(style.bold("  Available Domain Skills (Built-in, Workspace, & Global):"));
     for (const s of skills) {
       const isEnabled = !loader.isSkillDisabled(s.name);
@@ -476,9 +520,40 @@ function handleSkillsCommand(ctx: CommandContext, args: string[]): void {
       console.log(`      ${style.dim(s.description)}`);
     }
     console.log();
-    console.log(style.dim("  Commands: /skills disable <name> | /skills enable <name> | /skills toggle <name>"));
+    return;
   }
-  console.log();
+
+  const items = skills.map((s) => ({
+    id: s.name,
+    label: s.name,
+    description: s.description,
+    badge: s.scope,
+    checked: !loader.isSkillDisabled(s.name),
+  }));
+
+  await promptInteractiveList({
+    title: `🧩 Domain Skills Manager (${skills.length} available)`,
+    items,
+    mode: "toggle",
+    maxVisible: 8,
+    onToggle: (item) => {
+      loader.toggleSkill(item.id);
+    },
+    onAction: (key) => {
+      if (key === "a") {
+        for (const s of skills) loader.enableSkill(s.name);
+        for (const it of items) it.checked = true;
+      } else if (key === "d") {
+        for (const s of skills) loader.disableSkill(s.name);
+        for (const it of items) it.checked = false;
+      }
+      return false;
+    },
+    customKeyHints: "↑/↓: navigate · Space: toggle on/off · a: all on · d: all off · Enter/Esc: done",
+  });
+
+  const activeCount = skills.filter((s) => !loader.isSkillDisabled(s.name)).length;
+  console.log(`\n  ${style.green("✓")} Skills configuration updated: ${style.bold(String(activeCount))} active, ${style.dim(`${skills.length - activeCount} disabled`)}\n`);
 }
 
 function printMemories(ctx: CommandContext): void {
@@ -501,7 +576,7 @@ function printMemories(ctx: CommandContext): void {
   console.log();
 }
 
-function printSessions(ctx: CommandContext): void {
+async function printSessions(ctx: CommandContext): Promise<void> {
   const storage = ctx.storageManager;
   if (!storage) {
     console.log(style.yellow("Session persistence manager not active."));
@@ -509,17 +584,54 @@ function printSessions(ctx: CommandContext): void {
   }
 
   const threads = storage.listSessions();
-  console.log();
   if (threads.length === 0) {
-    console.log(style.dim("  No saved sessions in SQLite database."));
-  } else {
+    console.log(style.dim("\n  No saved sessions in SQLite database.\n"));
+    return;
+  }
+
+  if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    console.log();
     console.log(style.bold("  Saved Sessions in SQLite Store:"));
     for (const t of threads) {
       const dateStr = new Date(t.updatedAt).toLocaleString();
       console.log(`    • ${style.cyan(t.id)} [${style.dim(t.model)}] - ${style.dim(dateStr)} (${t.itemsCount} items)`);
     }
+    console.log();
+    return;
   }
-  console.log();
+
+  const items = threads.map((t) => {
+    const dateStr = new Date(t.updatedAt).toLocaleString();
+    return {
+      id: t.id,
+      label: t.id,
+      description: `${t.model} · ${t.itemsCount} items · ${dateStr}`,
+    };
+  });
+
+  const res = await promptInteractiveList({
+    title: `🗄️ Saved SQLite Sessions (${threads.length} total)`,
+    items,
+    mode: "select",
+    onAction: (key, item, idx) => {
+      if (key === "d") {
+        storage.deleteSession(item.id);
+        items.splice(idx, 1);
+        console.log(style.yellow(`\n  ✕ Deleted session ${item.id}`));
+      }
+      return false;
+    },
+    customKeyHints: "↑/↓: navigate · Enter: resume session · d: delete · Esc: exit",
+  });
+
+  if (res.action === "select" && res.selectedItem) {
+    const session = storage.loadSession(res.selectedItem.id);
+    if (session) {
+      ctx.session.setHistory(session.items);
+      if (session.thread.model) ctx.session.model = session.thread.model;
+      console.log(style.green(`\n  ✓ Resumed past session: ${style.bold(res.selectedItem.id)} (${session.items.length} items)\n`));
+    }
+  }
 }
 
 function printSessionStats(ctx: CommandContext): void {
@@ -810,7 +922,52 @@ async function handleMcpCommand(ctx: CommandContext, args: string[]): Promise<vo
   }
 
   // Default: list servers
-  CliFormatter.printMcpServers(manager.listServers(), manager.getLoadedConfigFiles());
+  const servers = manager.listServers();
+  const configFiles = manager.getLoadedConfigFiles();
+
+  if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    CliFormatter.printMcpServers(servers, configFiles);
+    return;
+  }
+
+  if (servers.length === 0) {
+    CliFormatter.printMcpServers(servers, configFiles);
+    return;
+  }
+
+  const items = servers.map((s) => ({
+    id: s.name,
+    label: s.name,
+    badge: s.connected ? "Connected" : "Disconnected",
+    description: `${s.toolsCount} tools · ${s.resourcesCount} resources`,
+    checked: s.connected,
+  }));
+
+  const res = await promptInteractiveList({
+    title: `🔌 Connected MCP Servers (${servers.length} total)`,
+    items,
+    mode: "select",
+    onAction: async (key, item) => {
+      if (key === "t") {
+        console.log(style.dim(`\n  Pinging '${item.id}'...`));
+        const testRes = await manager.pingServer(item.id);
+        if (testRes.success) {
+          console.log(style.green(`  ✓ PONG from '${item.id}' in ${testRes.durationMs}ms`));
+        } else {
+          console.log(style.red(`  ✕ Ping failed: ${testRes.error}`));
+        }
+      }
+      return false;
+    },
+    customKeyHints: "↑/↓: navigate · Enter: inspect tools · t: ping test · Esc: exit",
+  });
+
+  if (res.action === "select" && res.selectedItem) {
+    const client = manager.getClient(res.selectedItem.id);
+    if (client) {
+      CliFormatter.printMcpTools(res.selectedItem.id, client.getTools());
+    }
+  }
 }
 
 

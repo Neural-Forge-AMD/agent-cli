@@ -99,7 +99,7 @@ export class CliRepl {
           this.turnToolCalls = [];
           this.turnFilesModified.clear();
           this.turnCharsOut = 0;
-          this.spinner.start("Thinking...");
+          this.spinner.start("Thinking...", this.turnStartTime);
           break;
 
         case "ReasoningDelta":
@@ -142,7 +142,6 @@ export class CliRepl {
             console.log(style.dim("\n  └─────────────────────────────────────────────────────────\n"));
             this.reasoningStarted = false;
           }
-          this.spinner.stop();
           this.turnToolCalls.push(msg.toolName);
           this.activeToolArgs = msg.arguments || {};
           if (
@@ -152,9 +151,7 @@ export class CliRepl {
           ) {
             this.turnFilesModified.add((msg.arguments as any).path);
           }
-          console.log();
-          formatTaskStepStart(this.turnToolCalls.length, msg.toolName, msg.arguments);
-          this.spinner.start(`Executing [${this.turnToolCalls.length}] ${msg.toolName}...`);
+          this.spinner.start(`Executing [${this.turnToolCalls.length}] ${msg.toolName}...`, this.turnStartTime);
           break;
 
         case "ToolCallFinished":
@@ -166,7 +163,7 @@ export class CliRepl {
             msg.output,
             msg.isError
           );
-          this.spinner.start("Thinking deeply...");
+          this.spinner.start("Thinking deeply...", this.turnStartTime);
           break;
 
         case "InteractiveApprovalRequired" as any:
@@ -183,7 +180,7 @@ export class CliRepl {
         case "PlanUpdated":
           this.spinner.stop();
           formatTaskProgressPlan(msg.plan, msg.explanation);
-          this.spinner.start("Executing next step...");
+          this.spinner.start("Executing next step...", this.turnStartTime);
           break;
 
         case "TurnCompleted":
@@ -259,10 +256,10 @@ export class CliRepl {
       if (decision === "always") {
         this.session.execPolicy.addRule(/.*/, "allow", "User allowed all actions for this session");
         this.session.resolveApproval(msg.approvalId, true);
-        this.spinner.start(`Executing approved action (auto-approved for session)...`);
+        this.spinner.start(`Executing approved action (auto-approved for session)...`, this.turnStartTime);
       } else if (decision === "yes") {
         this.session.resolveApproval(msg.approvalId, true);
-        this.spinner.start(`Executing approved action...`);
+        this.spinner.start(`Executing approved action...`, this.turnStartTime);
       } else {
         this.session.resolveApproval(msg.approvalId, false);
         console.log(style.dim("  Action rejected by user."));
@@ -283,7 +280,7 @@ export class CliRepl {
         options: msg.options,
       });
       this.session.resolveUserQuestion(msg.questionId, answer);
-      this.spinner.start(`Processing response and continuing...`);
+      this.spinner.start(`Processing response and continuing...`, this.turnStartTime);
     } catch {
       this.session.resolveUserQuestion(msg.questionId, "");
     }
