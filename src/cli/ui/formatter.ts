@@ -408,8 +408,10 @@ export class CliFormatter {
    * Formats a Claude Code style user prompt row (❯ chip + dark row background spanning width + white text).
    */
   static formatClaudeUserPrompt(text: string): string {
-    const cols = typeof process.stdout?.columns === "number" ? process.stdout.columns : 80;
-    const width = Math.min(76, Math.max(48, cols - 6));
+    const cols = typeof process.stdout?.columns === "number" && process.stdout.columns > 0
+      ? process.stdout.columns
+      : 80;
+    const width = Math.max(20, cols - 4);
     const pad = Math.max(1, width - (text.length + 5));
     return `  \x1b[48;2;50;50;52m\x1b[38;2;145;145;150m ❯ \x1b[38;2;255;255;255m\x1b[1m${text}${" ".repeat(pad)}\x1b[0m`;
   }

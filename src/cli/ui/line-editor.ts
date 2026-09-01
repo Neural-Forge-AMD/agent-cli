@@ -144,10 +144,16 @@ export class InteractiveLineEditor {
         }
       };
 
+      const getTerminalCols = () => {
+        return typeof process.stdout?.columns === "number" && process.stdout.columns > 0
+          ? process.stdout.columns
+          : 80;
+      };
+
       const getRule = () => {
-        const cols = typeof process.stdout?.columns === "number" ? process.stdout.columns : 80;
-        const ruleLen = Math.min(cols - 4, 70);
-        return "─".repeat(Math.max(10, ruleLen));
+        const cols = getTerminalCols();
+        const ruleLen = Math.max(10, cols - 4);
+        return "─".repeat(ruleLen);
       };
 
       const ensureVisible = (totalItems: number, visibleRows: number) => {
@@ -188,20 +194,23 @@ export class InteractiveLineEditor {
 
         if (buffer.startsWith("/") && !popupDismissed && slashMatches.length > 0) {
           // 1. Slash commands popup
-          const BOX_WIDTH = 70;
+          const termCols = getTerminalCols();
+          const BOX_WIDTH = Math.max(20, Math.min(termCols - 4, 120));
           const maxVisible = Math.min(slashMatches.length, 7);
 
           ensureVisible(slashMatches.length, maxVisible);
           const visibleMatches = slashMatches.slice(scrollTop, scrollTop + maxVisible);
 
           const menuLines: string[] = [];
-          const rule = "─".repeat(Math.min(BOX_WIDTH, 68));
+          const rule = "─".repeat(BOX_WIDTH);
           const RULE_COLOR = "\x1b[38;2;80;80;88m";
           const ACTIVE_COLOR = "\x1b[38;2;225;225;225m";
           const INACTIVE_COLOR = "\x1b[38;2;139;139;144m";
           const RESET = "\x1b[0m";
 
           menuLines.push(`  ${RULE_COLOR}${rule}${RESET}`);
+
+          const maxDescLen = Math.max(10, BOX_WIDTH - 22);
 
           for (let i = 0; i < visibleMatches.length; i++) {
             const cmd = visibleMatches[i]!;
@@ -210,8 +219,8 @@ export class InteractiveLineEditor {
             const marker = isSelected ? `${ACTIVE_COLOR}❯${RESET}` : " ";
 
             const rawName = cmd.name.padEnd(16).slice(0, 16);
-            const rawDesc = cmd.description.length > 48
-              ? cmd.description.slice(0, 45) + "..."
+            const rawDesc = cmd.description.length > maxDescLen
+              ? cmd.description.slice(0, maxDescLen - 3) + "..."
               : cmd.description;
 
             if (isSelected) {
@@ -230,7 +239,8 @@ export class InteractiveLineEditor {
           process.stdout.write(`\x1b[${renderedMenuLines}A`);
         } else if (activeFile && !popupDismissed && fileMatches.length > 0) {
           // 2. @file Autocomplete popup
-          const BOX_WIDTH = 70;
+          const termCols = getTerminalCols();
+          const BOX_WIDTH = Math.max(20, Math.min(termCols - 4, 120));
           const maxVisible = Math.min(fileMatches.length, 7);
 
           ensureVisible(fileMatches.length, maxVisible);
@@ -239,13 +249,17 @@ export class InteractiveLineEditor {
           const menuLines: string[] = [];
           menuLines.push(`  ${style.dim("┌──")} ${style.brandBold("Files")} ${style.dim("─".repeat(Math.max(10, BOX_WIDTH - 9)) + "┐")}`);
 
+          const maxPathLen = Math.max(10, BOX_WIDTH - 8);
+
           for (let i = 0; i < visibleMatches.length; i++) {
             const filePath = visibleMatches[i]!;
             const actualIdx = scrollTop + i;
             const isSelected = actualIdx === selectedIndex;
             const marker = isSelected ? style.brand("❯") : " ";
 
-            const rawPath = filePath.length > 62 ? "..." + filePath.slice(filePath.length - 59) : filePath.padEnd(62);
+            const rawPath = filePath.length > maxPathLen
+              ? "..." + filePath.slice(filePath.length - (maxPathLen - 3))
+              : filePath.padEnd(maxPathLen);
             const coloredPath = isSelected ? style.brandBold(rawPath) : style.cyan(rawPath);
 
             menuLines.push(`  ${style.dim("│")} ${marker} ${coloredPath} ${style.dim("│")}`);
@@ -295,7 +309,17 @@ export class InteractiveLineEditor {
         }
       };
 
+      const onResize = () => {
+        redraw();
+      };
+      if (process.stdout && typeof process.stdout.on === "function") {
+        process.stdout.on("resize", onResize);
+      }
+
       const cleanupAndResolve = (result: string) => {
+        if (process.stdout && typeof process.stdout.removeListener === "function") {
+          process.stdout.removeListener("resize", onResize);
+        }
         clearMenu();
         process.stdin.removeListener("keypress", onKeypress);
         if (process.stdin.isTTY) {
@@ -324,6 +348,9 @@ export class InteractiveLineEditor {
             popupDismissed = false;
             redraw();
             return;
+          }
+          if (process.stdout && typeof process.stdout.removeListener === "function") {
+            process.stdout.removeListener("resize", onResize);
           }
           clearMenu();
           if (process.stdin.isTTY) {
