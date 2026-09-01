@@ -70,11 +70,9 @@ describe("Project Initialization & Onboarding Subsystem (/init)", () => {
     expect(analysis.commands.build).toBe("npm run build");
     expect(analysis.commands.test).toBe("bun test");
     expect(analysis.commands.typecheck).toBe("npm run typecheck");
-    expect(analysis.directoryStructure["src/"]).toBeDefined();
-    expect(analysis.directoryStructure["tests/"]).toBeDefined();
   });
 
-  test("ProjectAnalyzer generates formatted AGENTS.md document", () => {
+  test("ProjectAnalyzer generates concise, high-signal AGENTS.md per Anthropic best practices", () => {
     writeFileSync(
       join(testDir, "package.json"),
       JSON.stringify({
@@ -95,12 +93,11 @@ describe("Project Initialization & Onboarding Subsystem (/init)", () => {
 
     expect(markdown).toContain("# sample-service");
     expect(markdown).toContain("Sample microservice");
-    expect(markdown).toContain("## Development Commands");
+    expect(markdown).toContain("## Commands");
     expect(markdown).toContain("- **Build**: `npm run build`");
     expect(markdown).toContain("- **Test**: `bun test`");
-    expect(markdown).toContain("## Architecture & Directory Structure");
-    expect(markdown).toContain("`src/`");
-    expect(markdown).toContain("## Code Style & Guidelines");
+    expect(markdown).toContain("## Architecture & Stack");
+    expect(markdown).toContain("## Workflow & Code Guidelines");
   });
 
   test("runProjectInit writes AGENTS.md to disk cleanly", () => {
