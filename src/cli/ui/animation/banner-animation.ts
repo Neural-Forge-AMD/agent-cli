@@ -21,6 +21,7 @@ export interface BannerInfo {
 export interface BannerAnimationOptions {
   animate?: boolean;
   durationMs?: number;
+  withShimmerSweep?: boolean;
   onFinish?: () => void;
 }
 
@@ -84,7 +85,10 @@ export class BannerAnimator {
     this.renderStatic(info);
   }
 
-  static renderStatic(info: BannerInfo): void {
+  static renderStatic(
+    info: BannerInfo,
+    _options?: BannerAnimationOptions
+  ): void {
     const version = info.version || getCliVersion({ prefix: true });
     // Clean user name from dashboard auth (or fallback to OS user)
     const storedUser = new CredentialsStore().getUser();
