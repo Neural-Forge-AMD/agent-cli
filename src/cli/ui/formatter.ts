@@ -405,15 +405,51 @@ export class CliFormatter {
   }
 
   /**
-   * Formats a Claude Code style user prompt row (❯ chip + dark row background spanning width + white text).
+   * Formats a Claude Code style user prompt row (❯ chip + dark solid background spanning full terminal width).
    */
   static formatClaudeUserPrompt(text: string): string {
     const cols = typeof process.stdout?.columns === "number" && process.stdout.columns > 0
       ? process.stdout.columns
       : 80;
-    const width = Math.max(20, cols - 4);
-    const pad = Math.max(1, width - (text.length + 5));
-    return `  \x1b[48;2;50;50;52m\x1b[38;2;145;145;150m ❯ \x1b[38;2;255;255;255m\x1b[1m${text}${" ".repeat(pad)}\x1b[0m`;
+
+    // Total width of the dark box spanning to right edge with 2 leading spaces indent
+    const boxWidth = Math.max(20, cols - 2);
+    const contentWidth = Math.max(10, boxWidth - 3); // 3 characters for ` > ` prefix
+
+    const BG = "\x1b[48;2;43;43;45m";
+    const CHEVRON = "\x1b[38;2;128;128;133m";
+    const TEXT = "\x1b[38;2;240;240;242m";
+    const RESET = "\x1b[0m";
+
+    const rawLines = text.split("\n");
+    const wrappedLines: string[] = [];
+
+    for (const rawLine of rawLines) {
+      if (rawLine.length === 0) {
+        wrappedLines.push("");
+        continue;
+      }
+      let current = rawLine;
+      while (current.length > contentWidth) {
+        let breakIdx = current.lastIndexOf(" ", contentWidth);
+        if (breakIdx <= 0) {
+          breakIdx = contentWidth;
+        }
+        wrappedLines.push(current.slice(0, breakIdx));
+        current = current.slice(breakIdx).trimStart();
+      }
+      if (current.length > 0) {
+        wrappedLines.push(current);
+      }
+    }
+
+    const formatted = wrappedLines.map((line, idx) => {
+      const prefix = idx === 0 ? `${CHEVRON} ❯ ` : `${CHEVRON}   `;
+      const padLen = Math.max(0, contentWidth - line.length);
+      return `  ${BG}${prefix}${TEXT}${line}${" ".repeat(padLen)}${RESET}`;
+    });
+
+    return formatted.join("\n");
   }
 
   /**

@@ -328,9 +328,9 @@ export class InteractiveLineEditor {
           } catch {}
         }
         if (result.trim().length > 0 && !result.startsWith("/")) {
-          process.stdout.write(`\r\x1b[2K${CliFormatter.formatClaudeUserPrompt(result)}\n\n`);
+          process.stdout.write(`\x1b[1A\r\x1b[2K${CliFormatter.formatClaudeUserPrompt(result)}\n\n`);
         } else {
-          process.stdout.write("\n");
+          process.stdout.write(`\x1b[1A\r\x1b[2K\n`);
         }
         resolve(result);
       };
