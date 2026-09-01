@@ -26,6 +26,7 @@
     "build:js": "bun build ./src/index.ts --outdir ./dist --target=bun && bun build ./src/cli/index.ts --outfile ./dist/cli.js --target=bun",
     "build:exe": "bun build ./src/cli/index.ts --compile --outfile pikaa.exe",
     "build:binaries": "bun run scripts/build-binaries.ts",
+    "release:prepare": "bun run scripts/prepare-release.ts",
     "build": "bun run build:js && bun run build:exe",
     "prepublishOnly": "bun run build:js"
   },

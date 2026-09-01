@@ -1,0 +1,123 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  # ================================================================
+  # 1. Test & Quality Gate (Runs across Ubuntu, macOS, and Windows)
+  # ================================================================
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun Runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Run Test Suites
+        run: bun test --timeout 30000
+
+      - name: Verify JavaScript Bundle Build
+        run: bun run build:js
+
+      - name: Verify Native Standalone Compilation
+        run: bun run build:exe
+
+  # ================================================================
+  # 2. Release, Package Native Binaries & Publish to NPM
+  # (Executes automatically whenever code lands on main/master)
+  # ================================================================
+  release-and-publish:
+    name: Auto Release & Publish
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && !contains(github.event.head_commit.message, '[skip release]') && !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git Credentials
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup Bun Runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Prepare Version & Tag
+        id: prepare_release
+        run: bun run scripts/prepare-release.ts
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Compile All 6 Platform Standalone Binaries
+        run: bun run build:binaries
+
+      - name: Package Archives & Checksums for GitHub Release
+        run: |
+          mkdir -p dist/release
+          cp dist/bin/* dist/release/
+          cd dist/bin
+          tar -czf ../release/pikaa-linux-x64.tar.gz pikaa-linux-x64
+          tar -czf ../release/pikaa-linux-arm64.tar.gz pikaa-linux-arm64
+          tar -czf ../release/pikaa-darwin-x64.tar.gz pikaa-darwin-x64
+          tar -czf ../release/pikaa-darwin-arm64.tar.gz pikaa-darwin-arm64
+          zip -9 ../release/pikaa-windows-x64.zip pikaa-windows-x64.exe
+          zip -9 ../release/pikaa-windows-arm64.zip pikaa-windows-arm64.exe
+          cd ../release
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Release ${{ env.RELEASE_TAG }}
+          files: dist/release/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Package to NPM Registry
+        run: |
+          bun run build:js
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
