@@ -362,26 +362,33 @@ export class CliRepl {
       }
 
       // Submit user prompt to Session and wait for completion
-      try {
-        const turnPromise = new Promise<void>((resolve) => {
-          this.turnDoneResolver = resolve;
-        });
-
-        await this.session.submit({
-          type: "TurnInput",
-          request: {
-            text: line,
-          },
-        });
-
-        // Await turn completion before rendering the next prompt symbol!
-        await turnPromise;
-      } catch (err) {
-        console.error(style.red(`Failed to submit turn: ${err instanceof Error ? err.message : String(err)}\n`));
-      }
+      await this.submitTurn(line);
     }
 
     await this.close();
+  }
+
+  /**
+   * Programmatically submits a turn prompt to the active session and awaits its completion.
+   */
+  public async submitTurn(text: string): Promise<void> {
+    try {
+      const turnPromise = new Promise<void>((resolve) => {
+        this.turnDoneResolver = resolve;
+      });
+
+      await this.session.submit({
+        type: "TurnInput",
+        request: {
+          text,
+        },
+      });
+
+      // Await turn completion before returning
+      await turnPromise;
+    } catch (err) {
+      console.error(style.red(`Failed to submit turn: ${err instanceof Error ? err.message : String(err)}\n`));
+    }
   }
 
   async close(): Promise<void> {

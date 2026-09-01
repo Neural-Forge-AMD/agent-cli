@@ -148,8 +148,15 @@ export async function handleSlashCommand(
       return true;
 
     case "/init":
-      const initResult = runProjectInit({ cwd: ctx.session.cwd });
-      printInitSummary(initResult);
+      console.log(`\n  \x1b[38;2;217;119;87m✳ Initializing project instructions via AI agent...\x1b[0m\n`);
+      if (ctx.repl) {
+        await ctx.repl.submitTurn(
+          "Analyze this codebase and create or update the AGENTS.md project instruction file in the workspace root following Claude Code best practices. Inspect key config files (package.json, tsconfig, etc.), test/build scripts, and main source directories to discover exact development commands, architectural conventions, and workflow requirements. Write the finalized AGENTS.md using the write_file tool."
+        );
+      } else {
+        const initResult = runProjectInit({ cwd: ctx.session.cwd });
+        printInitSummary(initResult);
+      }
       return true;
 
     case "/agents":
