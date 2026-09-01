@@ -54,4 +54,23 @@ describe("CLI Version Auto-Detection Subsystem", () => {
       console.log = originalLog;
     }
   });
+
+  it("should ignore ambient npm_package_* environment variables", () => {
+    const originalPkgName = process.env.npm_package_name;
+    const originalPkgVer = process.env.npm_package_version;
+    try {
+      process.env.npm_package_name = "random-user-frontend";
+      process.env.npm_package_version = "0.0.0";
+
+      const meta = getPackageMetadata();
+      expect(meta.name).not.toBe("random-user-frontend");
+      expect(meta.version).not.toBe("0.0.0");
+    } finally {
+      if (originalPkgName !== undefined) process.env.npm_package_name = originalPkgName;
+      else delete process.env.npm_package_name;
+
+      if (originalPkgVer !== undefined) process.env.npm_package_version = originalPkgVer;
+      else delete process.env.npm_package_version;
+    }
+  });
 });

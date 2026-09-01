@@ -19,9 +19,9 @@ export function getPackageMetadata(): PackageMetadata {
     return cachedMetadata;
   }
 
-  // 1. Check environment variable overrides
-  const envVersion = process.env.PIKAA_VERSION || process.env.GROUPY_VERSION || process.env.npm_package_version;
-  const envName = process.env.PIKAA_NAME || process.env.npm_package_name;
+  // 1. Check environment variable overrides (only explicit PIKAA/GROUPY variables, never npm_package_*)
+  const envVersion = process.env.PIKAA_VERSION || process.env.GROUPY_VERSION;
+  const envName = process.env.PIKAA_NAME || process.env.GROUPY_NAME;
 
   if (envVersion) {
     cachedMetadata = {
@@ -105,7 +105,7 @@ export function getPackageMetadata(): PackageMetadata {
   // 4. Safe fallback if running in standalone binary where package.json is absent
   cachedMetadata = {
     name: "pikaa",
-    version: "0.3.2",
+    version: "0.3.5",
   };
   return cachedMetadata;
 }
