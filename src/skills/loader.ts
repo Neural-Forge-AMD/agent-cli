@@ -21,6 +21,7 @@ export class SkillsLoader {
   private includeGlobal: boolean;
   private includeBuiltIn: boolean;
   private disabledSkills: Set<string>;
+  private skillsCache = new Map<string, { timestamp: number; skills: SkillMetadata[] }>();
 
   constructor(optionsOrRoots: SkillsLoaderOptions | string[] = {}) {
     if (Array.isArray(optionsOrRoots)) {
@@ -50,11 +51,19 @@ export class SkillsLoader {
   }
 
   /**
+   * Clears in-memory skills cache
+   */
+  clearCache(): void {
+    this.skillsCache.clear();
+  }
+
+  /**
    * Disables a skill by name
    */
   disableSkill(name: string): boolean {
     const key = name.trim().toLowerCase();
     this.disabledSkills.add(key);
+    this.clearCache();
     return true;
   }
 
@@ -63,7 +72,9 @@ export class SkillsLoader {
    */
   enableSkill(name: string): boolean {
     const key = name.trim().toLowerCase();
-    return this.disabledSkills.delete(key);
+    const res = this.disabledSkills.delete(key);
+    this.clearCache();
+    return res;
   }
 
   /**
@@ -71,6 +82,7 @@ export class SkillsLoader {
    */
   toggleSkill(name: string): boolean {
     const key = name.trim().toLowerCase();
+    this.clearCache();
     if (this.disabledSkills.has(key)) {
       this.disabledSkills.delete(key);
       return true; // now enabled
@@ -99,6 +111,7 @@ export class SkillsLoader {
    */
   setBuiltInEnabled(enabled: boolean): void {
     this.includeBuiltIn = enabled;
+    this.clearCache();
   }
 
   /**
@@ -140,6 +153,13 @@ export class SkillsLoader {
   }
 
   listSkills(cwd: string, options?: { includeDisabled?: boolean }): SkillMetadata[] {
+    const cacheKey = `${cwd}:${options?.includeDisabled ?? false}`;
+    const cached = this.skillsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < 30_000) {
+      return cached.skills;
+    }
+
     const roots = this.getDiscoveryRoots(cwd);
     const discovered = new Map<string, SkillMetadata>();
 
@@ -165,7 +185,9 @@ export class SkillsLoader {
       } catch {}
     }
 
-    return Array.from(discovered.values());
+    const result = Array.from(discovered.values());
+    this.skillsCache.set(cacheKey, { timestamp: now, skills: result });
+    return result;
   }
 
   /**
@@ -200,28 +222,46 @@ export class SkillsLoader {
 
   private parseSkillFrontmatter(
     filePath: string,
-    fallbackName: string,
-    rootDir: string,
+    dirName: string,
+    root: string,
     cwd: string
   ): SkillMetadata | null {
     try {
       const raw = readFileSync(filePath, "utf8");
       const { attributes } = this.extractFrontmatterAndBody(raw);
-      const isWorkspace = filePath.startsWith(resolve(cwd, ".agents"));
-      const isBuiltIn =
-        filePath.includes(join("groupy", "skills")) ||
-        rootDir.endsWith("skills") ||
-        attributes.source === "built-in";
 
-      const scope: SkillScope = isWorkspace ? "workspace" : isBuiltIn ? "built-in" : "global";
+      let scope: SkillScope = "global";
+      const normPath = filePath.toLowerCase().replace(/\\/g, "/");
+      const normCwd = cwd.toLowerCase().replace(/\\/g, "/");
+      const normRoot = root.toLowerCase().replace(/\\/g, "/");
+
+      if (
+        normRoot.includes(".agents") ||
+        normRoot === `${normCwd}/skills` ||
+        normPath.startsWith(normCwd) ||
+        this.customRoots.some((r) => normPath.startsWith(resolve(r).toLowerCase().replace(/\\/g, "/")))
+      ) {
+        scope = "workspace";
+      } else if (normRoot.includes("groupy") && (normRoot.endsWith("skills") || normRoot.includes("plugins"))) {
+        scope = "built-in";
+      }
+
+      const name = attributes["name"] || dirName;
+      const description = attributes["description"] || "Autonomous agent skill";
+      const shortDescription = attributes["short-description"] || attributes["summary"];
 
       return {
-        name: attributes.name || fallbackName,
-        description: attributes.description || "Specialized skill workflow.",
-        shortDescription: attributes.short_description || attributes.shortDescription,
+        name,
+        description,
+        shortDescription,
         path: filePath,
-        rootDir,
+        rootDir: root,
+        dirPath: resolve(filePath, ".."),
         scope,
+        enabled: true,
+        tags: attributes["tags"]
+          ? attributes["tags"].split(",").map((t) => t.trim())
+          : undefined,
       };
     } catch {
       return null;
@@ -235,17 +275,20 @@ export class SkillsLoader {
     const attributes: Record<string, string> = {};
     let body = raw;
 
-    const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-    if (match) {
-      const frontmatterText = match[1] || "";
-      body = match[2] || "";
+    if (raw.startsWith("---")) {
+      const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+      if (match) {
+        const yamlContent = match[1] ?? "";
+        body = match[2] ?? "";
 
-      for (const line of frontmatterText.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) continue;
+        const lines = yamlContent.split("\n");
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) continue;
 
-        const colonIdx = trimmed.indexOf(":");
-        if (colonIdx > 0) {
+          const colonIdx = trimmed.indexOf(":");
+          if (colonIdx === -1) continue;
+
           const key = trimmed.slice(0, colonIdx).trim();
           let val = trimmed.slice(colonIdx + 1).trim();
           if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
@@ -263,10 +306,11 @@ export class SkillsLoader {
     const skills = this.listSkills(cwd, { includeDisabled: false });
     if (skills.length === 0) return "";
 
-    // Prioritize all workspace and built-in skills, plus top global skills (capped at 250 to keep prompt lean)
-    const prioritySkills = skills.filter((s) => s.scope === "workspace" || s.scope === "built-in");
+    // Prioritize ALL workspace skills first, then built-in skills, then global skills (to keep prompt lean & fast)
+    const workspaceSkills = skills.filter((s) => s.scope === "workspace");
+    const builtInSkills = skills.filter((s) => s.scope === "built-in");
     const otherSkills = skills.filter((s) => s.scope !== "workspace" && s.scope !== "built-in");
-    const selectedSkills = [...prioritySkills, ...otherSkills].slice(0, 250);
+    const selectedSkills = [...workspaceSkills, ...builtInSkills, ...otherSkills].slice(0, 150);
 
     const lines = selectedSkills.map((s) => {
       const desc = s.shortDescription || s.description;
@@ -274,9 +318,9 @@ export class SkillsLoader {
     });
     const suffix =
       skills.length > selectedSkills.length
-        ? `\n... and ${skills.length - selectedSkills.length} additional skills available via load_skill.`
+        ? `\n... and ${skills.length - selectedSkills.length} additional domain skills available via \`load_skill\`.`
         : "";
 
-    return `\n## Available Domain Skills\n<available_skills>\n${lines.join("\n")}${suffix}\n</available_skills>\nWhen tackling complex specialized tasks that match any of these skills (e.g., scientific computing, biology/bioinformatics, chemistry, physics, quantum computing, machine learning, mathematics, security auditing, UI frontend design, systematic debugging, TDD), you MUST autonomously use the \`load_skill\` tool to retrieve full instructions before implementing.`;
+    return `\n## Available Domain Skills\n<available_skills>\n${lines.join("\n")}${suffix}\n</available_skills>\nWhen tackling complex specialized tasks that match any of these skills, autonomously use the \`load_skill\` tool to retrieve full instructions before implementing.`;
   }
 }

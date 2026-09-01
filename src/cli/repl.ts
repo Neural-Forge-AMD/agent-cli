@@ -288,14 +288,17 @@ export class CliRepl {
 
   async start(): Promise<void> {
     // 1. Render Groupy Emblem & Banner
-    const creds = new CredentialsStore().load();
-    const accountUser = creds?.user?.username || creds?.user?.email || (creds?.accessToken ? "Authenticated" : undefined);
+    const credStore = new CredentialsStore();
+    const userInfo = credStore.getUser();
+    const accountUser = userInfo?.username || (userInfo?.email ? userInfo.email.split("@")[0] : undefined);
+    const userPlan = userInfo?.plan;
 
     await renderAnimatedGroupyBanner({
       user: accountUser,
       role: this.role,
       model: this.session.model,
       cwd: this.session.cwd,
+      plan: userPlan,
     });
 
     // Check for new version releases non-blockingly

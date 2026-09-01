@@ -54,8 +54,13 @@ describe("Authentication & Token Management (pikaa-cli-backend integration)", ()
     expect(store.getAccessToken()).toBe("jwt_token_sample_12345");
     expect(store.getBaseUrl()).toBe("http://localhost:8090/v1");
 
+    store.setDefaultModel("claude-3-7-sonnet");
+    expect(store.getDefaultModel()).toBe("claude-3-7-sonnet");
+    expect(store.load()?.defaultModel).toBe("claude-3-7-sonnet");
+
     store.clear();
     expect(store.load()).toBeNull();
+    expect(store.getDefaultModel()).toBeUndefined();
   });
 
   test("ModelClient reads stored credentials from CredentialsStore", () => {

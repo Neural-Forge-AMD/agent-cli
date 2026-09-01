@@ -11,8 +11,10 @@ export interface SkillMetadata {
   shortDescription?: string;
   path: string;
   rootDir: string;
+  dirPath?: string;
   scope: SkillScope;
   enabled?: boolean;
+  tags?: string[];
 }
 
 export interface LoadedSkill extends SkillMetadata {

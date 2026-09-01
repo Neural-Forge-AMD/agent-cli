@@ -10,11 +10,15 @@ export interface AuthCredentials {
   tokenType?: string;
   expiresAt?: number;
   baseUrl?: string;
+  defaultModel?: string;
+  model?: string;
   user?: {
     id?: string;
     email?: string;
     username?: string;
     role?: string;
+    plan?: string;
+    tier?: string;
   };
 }
 

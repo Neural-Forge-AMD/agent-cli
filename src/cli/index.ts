@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const credStore = new CredentialsStore();
   const savedCreds = credStore.load();
 
-  let model = process.env.GROUPY_MODEL || process.env.OPENAI_MODEL || "groupy";
+  let model = process.env.GROUPY_MODEL || process.env.OPENAI_MODEL || savedCreds?.defaultModel || savedCreds?.model || "groupy";
   let baseUrl = process.env.GROUPY_BASE_URL || process.env.OPENAI_BASE_URL || savedCreds?.baseUrl;
   let apiKey = process.env.GROUPY_API_KEY || process.env.OPENAI_API_KEY || savedCreds?.accessToken;
   let explicitBaseUrl: string | undefined;

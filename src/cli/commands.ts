@@ -5,7 +5,6 @@
 import { c, style } from "./ui/colors";
 import { InteractiveLineEditor } from "./ui/line-editor";
 import { formatDuration } from "./ui/spinner";
-import { AsciiAnimation, ALL_ANIMATION_VARIANTS, type AnimationVariant } from "./ui/animation";
 import { CliFormatter } from "./ui/formatter";
 import { promptInteractiveList, promptChoice } from "./ui/prompt";
 import { estimateTotalTokens } from "../context/compactor";
@@ -20,9 +19,11 @@ import type { SkillsLoader } from "../skills/loader";
 import type { MemoryStore } from "../memories/store";
 import type { WorktreeManager } from "../worktree/manager";
 import type { CliRepl } from "./repl";
+import { AgentRoleRegistry, type AgentRole } from "../agents/roles";
 import { CHROME_DEVTOOLS_MCP_SERVER_PATH } from "../mcp/servers/chrome-devtools";
 import { WEB_SEARCH_MCP_SERVER_PATH } from "../mcp/servers/web-search";
 import { SQLITE_MCP_SERVER_PATH } from "../mcp/servers/sqlite";
+import { getCliVersion } from "./version";
 
 export interface SlashCommandDef {
   name: string;
@@ -33,7 +34,6 @@ export const AVAILABLE_SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "/help", description: "Show command list and help menu" },
   { name: "/stats", description: "Display session runtime, turn stats & sub-agent status" },
   { name: "/model", description: "Select or switch active AI model" },
-  { name: "/models", description: "List available AI models from gateway" },
   { name: "/reasoning", description: "Toggle internal reasoning chain visibility" },
   { name: "/login", description: "Authenticate with backend provider" },
   { name: "/whoami", description: "Check backend authentication status" },
@@ -41,11 +41,11 @@ export const AVAILABLE_SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "/memories", description: "View learned preferences & memories" },
   { name: "/worktrees", description: "List active isolated Git Worktrees" },
   { name: "/sessions", description: "List saved past sessions from SQLite store" },
-  { name: "/roles", description: "List available agent roles & nicknames" },
+  { name: "/role", description: "Select and inspect specialized agent roles & personas" },
   { name: "/security", description: "Scan codebase for vulnerabilities & secrets (Strix)" },
   { name: "/agents", description: "List active sub-agents & execution status" },
   { name: "/mcp", description: "List connected Model Context Protocol servers" },
-  { name: "/animate", description: "Preview 36-frame ASCII art animation variants" },
+  { name: "/release-notes", description: "View changelog and what's new in this version" },
   { name: "/compact", description: "Trigger manual token history compaction" },
   { name: "/clear", description: "Clear terminal screen" },
   { name: "/logout", description: "Clear stored authentication credentials" },
@@ -107,8 +107,9 @@ export async function handleSlashCommand(
       console.log(style.green("Successfully logged out. Credentials cleared."));
       return true;
 
+    case "/role":
     case "/roles":
-      printRoles(ctx);
+      await handleRolesCommand(ctx, args[0]);
       return true;
 
     case "/agents":
@@ -146,9 +147,13 @@ export async function handleSlashCommand(
       await handleSecurityCommand(ctx, args);
       return true;
 
-    case "/animate":
-    case "/animation":
-      await handleAnimate(args[0]);
+    case "/release-notes":
+    case "/release-note":
+    case "/releasenotes":
+    case "/releasenote":
+    case "/changelog":
+    case "/whatsnew":
+      printReleaseNotes();
       return true;
 
     case "/compact":
@@ -251,14 +256,17 @@ export async function handleReasoningCommand(ctx: CommandContext, arg?: string):
 }
 
 export async function handleModelSelection(ctx: CommandContext, modelArg?: string): Promise<void> {
+  const credStore = new CredentialsStore();
+
   if (modelArg && modelArg.trim().length > 0) {
     const chosen = modelArg.trim();
     ctx.session.model = chosen;
-    console.log(style.green(`\n  ✓ Active model switched to: ${style.bold(chosen)}\n`));
+    credStore.setDefaultModel(chosen);
+    console.log(style.green(`\n  ✓ Default model switched and saved to: ${style.bold(chosen)}\n`));
     return;
   }
 
-  const creds = new CredentialsStore().load();
+  const creds = credStore.load();
   const baseUrl = creds?.baseUrl || process.env.GROUPY_BASE_URL || "https://api.groupy-hub.store/v1";
   const apiKey = creds?.accessToken || process.env.GROUPY_API_KEY;
 
@@ -279,6 +287,7 @@ export async function handleModelSelection(ctx: CommandContext, modelArg?: strin
     models = [
       { id: "gemini-2.5-flash", owned_by: "google" },
       { id: "claude-3-5-sonnet", owned_by: "anthropic" },
+      { id: "claude-3-7-sonnet", owned_by: "anthropic" },
       { id: "gpt-4o", owned_by: "openai" },
       { id: "deepseek-r1", owned_by: "deepseek" },
       { id: "qwen-2.5-coder", owned_by: "alibaba" },
@@ -295,16 +304,18 @@ export async function handleModelSelection(ctx: CommandContext, modelArg?: strin
   const activeIdx = Math.max(0, models.findIndex((m) => m.id.toLowerCase() === ctx.session.model.toLowerCase()));
 
   const res = await promptInteractiveList({
-    title: `🤖 Select Active AI Model (Current: ${ctx.session.model})`,
+    title: `🤖 Select Default AI Model (Current: ${ctx.session.model})`,
     items,
     mode: "select",
     defaultIndex: activeIdx,
-    customKeyHints: "↑/↓: navigate · Enter: switch active model · Esc: keep current",
+    customKeyHints: "↑/↓: navigate · Enter: set as default model · Esc: keep current",
   });
 
   if (res.action === "select" && res.selectedItem) {
-    ctx.session.model = res.selectedItem.id;
-    console.log(style.green(`\n  ✓ Active model switched to: ${style.bold(res.selectedItem.id)}\n`));
+    const chosen = res.selectedItem.id;
+    ctx.session.model = chosen;
+    credStore.setDefaultModel(chosen);
+    console.log(style.green(`\n  ✓ Default model switched and saved to: ${style.bold(chosen)}\n`));
   } else {
     console.log(style.dim("\n  Model unchanged.\n"));
   }
@@ -412,14 +423,75 @@ async function printWorktrees(ctx: CommandContext): Promise<void> {
   });
 }
 
-function printRoles(ctx: CommandContext): void {
+export async function handleRolesCommand(ctx: CommandContext, roleArg?: string): Promise<void> {
   const spawner = ctx.spawner;
-  if (!spawner) {
-    console.log(style.yellow("Multi-agent spawner not active."));
+  const roleRegistry = spawner?.roleRegistry || new AgentRoleRegistry();
+  const roles = roleRegistry.listRoles();
+
+  if (roleArg) {
+    const role = roleRegistry.getRole(roleArg.toLowerCase());
+    if (role) {
+      displayRoleDetails(role);
+      return;
+    } else {
+      console.log(style.yellow(`\n  Unknown role: "${roleArg}". Available roles: ${roles.map((r) => r.name).join(", ")}\n`));
+      return;
+    }
+  }
+
+  if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    printRoles(ctx);
     return;
   }
 
-  const roles = spawner.roleRegistry.listRoles();
+  const items = roles.map((r) => {
+    const tools = r.allowedToolNames ? r.allowedToolNames.join(", ") : "all tools";
+    return {
+      id: r.name,
+      label: r.name,
+      description: `${r.description} · [${tools}]`,
+      badge: r.name === "default" ? "primary" : undefined,
+    };
+  });
+
+  const res = await promptInteractiveList({
+    title: `🎭 Agent Roles & Specialized Personas (${roles.length} roles)`,
+    items,
+    mode: "select",
+    customKeyHints: "↑/↓: navigate · Enter: view details · Esc: close",
+  });
+
+  if (res.action === "select" && res.selectedItem) {
+    const role = roleRegistry.getRole(res.selectedItem.id);
+    if (role) {
+      displayRoleDetails(role);
+    }
+  }
+}
+
+function displayRoleDetails(role: AgentRole): void {
+  const boxWidth = Math.min(process.stdout.columns ?? 80, 75);
+  const border = "─".repeat(Math.max(10, boxWidth - role.name.length - 16));
+  const tools = role.allowedToolNames ? role.allowedToolNames.join(", ") : "all tools";
+  const nicks = role.nicknameCandidates ? role.nicknameCandidates.join(", ") : "none";
+
+  console.log();
+  console.log(`  ${style.cyan("┌──")} ${style.bold(`Role: ${role.name}`)} ${style.cyan(border)}`);
+  console.log(`  ${style.cyan("│")}  ${style.bold("Description:")} ${role.description}`);
+  console.log(`  ${style.cyan("│")}  ${style.bold("Allowed Tools:")} ${style.dim(`[${tools}]`)}`);
+  console.log(`  ${style.cyan("│")}  ${style.bold("Nicknames:")} ${style.dim(`[${nicks}]`)}`);
+  console.log(`  ${style.cyan("│")}`);
+  console.log(`  ${style.cyan("│")}  ${style.bold("System Prompt:")}`);
+  for (const line of role.systemPrompt.split("\n")) {
+    console.log(`  ${style.cyan("│")}    ${style.dim(line)}`);
+  }
+  console.log(`  ${style.cyan("└" + "─".repeat(Math.max(10, boxWidth - 4)))}\n`);
+}
+
+function printRoles(ctx: CommandContext): void {
+  const spawner = ctx.spawner;
+  const roleRegistry = spawner?.roleRegistry || new AgentRoleRegistry();
+  const roles = roleRegistry.listRoles();
   console.log();
   console.log(style.bold("  Configured Agent Roles:"));
   for (const r of roles) {
@@ -668,37 +740,6 @@ function printSessionStats(ctx: CommandContext): void {
     }
   }
   console.log(style.bold("  └─────────────────────────────────────────────────────────"));
-  console.log();
-}
-
-async function handleAnimate(variantName?: string): Promise<void> {
-  const chosen = variantName?.toLowerCase() as AnimationVariant | undefined;
-
-  if (chosen && ALL_ANIMATION_VARIANTS.includes(chosen)) {
-    console.log(`\n  ${style.brand("◆")} Playing 36-frame animation variant: ${style.bold(chosen)}...\n`);
-    const anim = new AsciiAnimation({
-      variant: chosen,
-      frameTickMs: 60,
-      colorFn: (frame) => style.brand(frame),
-    });
-    await anim.play(2500, { clearScreen: false });
-    console.log();
-    return;
-  }
-
-  console.log();
-  console.log(style.bold("  36-Frame ASCII Art Animation Catalog:"));
-  for (const v of ALL_ANIMATION_VARIANTS) {
-    console.log(`    • ${style.cyan(v)} - ${style.dim(`/animate ${v}`)}`);
-  }
-  console.log(`\n  ${style.dim("Playing random variant for 2 seconds...")}\n`);
-  const anim = new AsciiAnimation({
-    variant: "default",
-    frameTickMs: 60,
-    colorFn: (frame) => style.brand(frame),
-  });
-  anim.pickRandomVariant();
-  await anim.play(2000);
   console.log();
 }
 
@@ -968,6 +1009,61 @@ async function handleMcpCommand(ctx: CommandContext, args: string[]): Promise<vo
       CliFormatter.printMcpTools(res.selectedItem.id, client.getTools());
     }
   }
+}
+
+export function printReleaseNotes(): void {
+  const version = getCliVersion({ prefix: true });
+  const ROSE = "\x1b[38;2;205;105;74m";
+  const WHITE = "\x1b[38;2;255;255;255m";
+  const GRAY = "\x1b[38;2;148;148;148m";
+  const BOLD = "\x1b[1m";
+  const RESET = "\x1b[0m";
+
+  function stripAnsi(str: string): string {
+    return str.replace(/\x1b\[[0-9;]*m/g, "");
+  }
+
+  function padLine(str: string, width: number): string {
+    const vis = stripAnsi(str);
+    return str + " ".repeat(Math.max(0, width - vis.length));
+  }
+
+  const totalInnerWidth = 74;
+  const contentLines = [
+    "",
+    "  " + BOLD + WHITE + "🚀 What's New in " + version + " (Latest)" + RESET,
+    "  " + ROSE + "•" + RESET + " " + WHITE + BOLD + "Persistent Default AI Model" + RESET + ": Switch via " + ROSE + "/model" + RESET + " and save",
+    "    preference across sessions in ~/.groupy/credentials.json.",
+    "  " + ROSE + "•" + RESET + " " + WHITE + BOLD + "Real-time Git Branch Detection" + RESET + ": Header displays active branch",
+    "    ( main) alongside user subscription tier (Groupy Pro / Max).",
+    "  " + ROSE + "•" + RESET + " " + WHITE + BOLD + "Claude Code Terminal UI Parity" + RESET + ": Authentic pixel emblem, fieldset",
+    "    header box, user prompt badge pills, and streaming responses.",
+    "  " + ROSE + "•" + RESET + " " + WHITE + BOLD + "Autonomous Sub-Agents & Roles" + RESET + ": Multi-agent spawner with roles",
+    "    (Pikaa, Heca, Bankli, Moli) and cryptographic action provenance.",
+    "  " + ROSE + "•" + RESET + " " + WHITE + BOLD + "Model Context Protocol (MCP)" + RESET + ": Connect stdio & SSE servers with",
+    "    multi-config auto-discovery, tool hot-reloads, and ping tests.",
+    "  " + ROSE + "•" + RESET + " " + WHITE + BOLD + "Isolated Git Worktrees" + RESET + ": Run risky tasks in isolated worktree",
+    "    branches without dirtying your main workspace (/worktrees).",
+    "  " + ROSE + "•" + RESET + " " + WHITE + BOLD + "Strix-Inspired Security Auditor" + RESET + ": Automated scanner for exposed",
+    "    secrets, eval(), and SQL injection vulnerabilities (/security).",
+    "",
+    "  " + BOLD + WHITE + "📦 Previous Highlights (v0.3.0 - v0.3.1)" + RESET,
+    "  " + ROSE + "•" + RESET + " " + WHITE + "Unified CI/CD Pipeline" + RESET + ": Single automated release packager on merge.",
+    "  " + ROSE + "•" + RESET + " " + WHITE + "Interactive Question Flow" + RESET + ": Selectable multiple-choice dialogs.",
+    "  " + ROSE + "•" + RESET + " " + WHITE + "Persistent Memory Store" + RESET + ": Learned user preferences in markdown.",
+    "",
+    "  " + GRAY + "Tip: Type " + ROSE + "/help" + GRAY + " to view all available commands." + RESET,
+  ];
+
+  const topDashes = Math.max(2, totalInnerWidth - (15 + version.length + 14));
+
+  console.log("");
+  console.log("  " + ROSE + "┌─ " + ROSE + BOLD + "Groupy Code Release Notes" + RESET + " " + GRAY + version + RESET + " " + ROSE + "─".repeat(topDashes) + "┐" + RESET);
+  for (const line of contentLines) {
+    console.log("  " + ROSE + "│" + RESET + padLine(line, totalInnerWidth) + ROSE + "│" + RESET);
+  }
+  console.log("  " + ROSE + "└" + "─".repeat(totalInnerWidth) + "┘" + RESET);
+  console.log("");
 }
 
 

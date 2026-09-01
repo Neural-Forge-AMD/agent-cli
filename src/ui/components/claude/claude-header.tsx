@@ -10,13 +10,12 @@ import * as React from "react";
 const ROSE = "#cd694a";
 const GRAY = "#949494";
 
-// Claude's launch sprite as a 1-bit bitmap (decoded from the terminal glyphs).
+// Key (Kunci) launch sprite as a 1-bit bitmap
 const LOGO_BITS = [
-  "000111111111111000",
-  "000110111111011000",
-  "011111111111111110",
-  "000111111111111000",
-  "000010100001010000",
+  "001111000000000000",
+  "011001101111111110",
+  "011001100010010010",
+  "001111000000000000",
 ];
 
 export function ClaudeLogo({
@@ -63,10 +62,11 @@ export function ClaudeLogo({
 }
 
 export function ClaudeHeader({
-  version = "v0.3.1",
+  version = "v0.3.2",
   user = "Developer",
-  model = "Claude 3.7 Sonnet (Thinking) · Groupy Agent",
-  org = "Mesosfer AI Workspace",
+  model = "Claude 3.7 Sonnet (Thinking)",
+  plan = "Pro",
+  branch = "main",
   cwd = "~/workspace",
   tips = ["Ask Groupy to create a new app, test code, or run tasks"],
   whatsNew = [
@@ -78,12 +78,16 @@ export function ClaudeHeader({
   version?: string;
   user?: string;
   model?: string;
-  org?: string;
+  plan?: string;
+  branch?: string;
   cwd?: string;
   tips?: string[];
   whatsNew?: string[];
   className?: string;
 }) {
+  const modelLine = `${model} · Groupy ${plan}`;
+  const branchLine = ` ${branch}`;
+
   return (
     <fieldset
       className={`min-w-0 rounded-[6px] border px-3 pb-3.5 pt-1 font-mono text-[13px] leading-[1.5] text-[#c0caf5] sm:px-4 ${className || ""}`}
@@ -99,8 +103,8 @@ export function ClaudeHeader({
           <div className="font-semibold text-white">Welcome back {user}!</div>
           <ClaudeLogo className="my-1.5" />
           <div className="min-w-0 space-y-0.5 break-words" style={{ color: GRAY }}>
-            <div>{model}</div>
-            <div>{org}</div>
+            <div>{modelLine}</div>
+            <div>{branchLine}</div>
             <div>{cwd}</div>
           </div>
         </div>
