@@ -11,11 +11,12 @@
   },
   "type": "module",
   "files": [
-    "dist",
+    "dist/index.js",
+    "dist/cli.js",
     "bin",
     "templates",
     "assets",
-    "skills",
+    "skills/**/SKILL.md",
     "README.md",
     "LICENSE"
   ],

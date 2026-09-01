@@ -1,0 +1,33 @@
+# Development & Test
+tests/
+scripts/
+.github/
+.vscode/
+.idea/
+*.log
+*.sqlite
+*.sqlite-journal
+*.db
+pikaa.exe
+*.tsbuildinfo
+
+# Ignore heavy skill reference subdirectories & non-essential assets
+skills/**/references/
+skills/**/scripts/
+skills/**/assets/
+skills/**/data/
+skills/**/docs/
+skills/**/*.py
+skills/**/*.ipynb
+skills/**/*.csv
+skills/**/*.tsv
+skills/**/*.png
+skills/**/*.jpg
+skills/**/*.jpeg
+skills/**/*.gif
+skills/**/*.zip
+skills/**/*.tar.gz
+skills/**/*.pkl
+skills/**/*.h5
+skills/**/*.parquet
+skills/**/*.pdf

@@ -117,6 +117,7 @@ jobs:
 
       - name: Publish Package to NPM Registry
         run: |
+          rm -rf dist/bin dist/release
           bun run build:js
           npm publish --access public
         env:
