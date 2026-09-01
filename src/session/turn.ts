@@ -249,7 +249,21 @@ export async function runTurn(
         continue;
       }
 
-      // If no tool calls were made, the turn is complete
+      // If no tool calls were made, check if the response was completely empty
+      if (!currentAgentText.trim() && toolCallRequests.length === 0) {
+        if (iteration === 1 && iteration < turnContext.maxIterations) {
+          // Model returned empty completion / stalled; re-prompt automatically
+          session.addHistoryItem({
+            id: `msg_nudge_${Date.now()}`,
+            type: "user_message",
+            content: "Please proceed with executing the task. Provide your complete analysis or call the required tools now.",
+            createdAt: Date.now(),
+          });
+          continue;
+        }
+      }
+
+      // Turn is complete
       break;
     }
 
