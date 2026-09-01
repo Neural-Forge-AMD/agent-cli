@@ -100,7 +100,7 @@ export async function checkForUpdates(options: {
 
   const meta = getPackageMetadata();
   const currentVersion = options.currentVersion || meta.version;
-  const packageName = options.packageName || (meta.name.startsWith("@") ? meta.name : `@pikaa-ai/${meta.name}`);
+  const packageName = options.packageName || "@pikaa-ai/pikaa";
   const cachePath = options.cachePath || getUpdateCachePath();
 
   const now = Date.now();

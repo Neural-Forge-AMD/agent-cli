@@ -31,7 +31,7 @@ export function getPackageMetadata(): PackageMetadata {
     return cachedMetadata;
   }
 
-  // 2. Resolve starting directories to search upwards
+  // 2. Resolve starting directories to search upwards (CLI module location first)
   const searchDirs: string[] = [];
 
   try {
@@ -43,8 +43,6 @@ export function getPackageMetadata(): PackageMetadata {
     // Ignore URL resolution errors in bundled environments
   }
 
-  searchDirs.push(process.cwd());
-
   for (const startDir of searchDirs) {
     let current = resolve(startDir);
     for (let depth = 0; depth < 5; depth++) {
@@ -52,7 +50,14 @@ export function getPackageMetadata(): PackageMetadata {
       if (existsSync(candidate)) {
         try {
           const content = JSON.parse(readFileSync(candidate, "utf8"));
-          if (content && typeof content.version === "string") {
+          if (
+            content &&
+            typeof content.version === "string" &&
+            (content.name === "@pikaa-ai/pikaa" ||
+             content.name === "pikaa" ||
+             content.bin?.pikaa ||
+             content.bin?.groupy)
+          ) {
             const cleanName = content.name?.startsWith("@")
               ? content.name.split("/")[1] || content.name
               : content.name || "pikaa";
@@ -74,10 +79,33 @@ export function getPackageMetadata(): PackageMetadata {
     }
   }
 
-  // 3. Safe fallback if running in standalone binary where package.json is absent
+  // 3. Check process.cwd() ONLY if it is the groupy/pikaa repo itself
+  try {
+    const cwdCandidate = join(process.cwd(), "package.json");
+    if (existsSync(cwdCandidate)) {
+      const content = JSON.parse(readFileSync(cwdCandidate, "utf8"));
+      if (
+        content &&
+        typeof content.version === "string" &&
+        (content.name === "@pikaa-ai/pikaa" ||
+         content.name === "pikaa" ||
+         content.bin?.pikaa ||
+         content.bin?.groupy)
+      ) {
+        cachedMetadata = {
+          name: "pikaa",
+          version: content.version,
+          description: content.description,
+        };
+        return cachedMetadata;
+      }
+    }
+  } catch {}
+
+  // 4. Safe fallback if running in standalone binary where package.json is absent
   cachedMetadata = {
     name: "pikaa",
-    version: "0.3.1",
+    version: "0.3.2",
   };
   return cachedMetadata;
 }
