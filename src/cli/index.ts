@@ -25,6 +25,7 @@ import { style } from "./ui/colors";
 import { MarkdownHighlighter } from "./ui/markdown";
 import { getCliVersion, getPackageMetadata } from "./version";
 import { handleSlashCommand } from "./commands";
+import { runProjectInit, printInitSummary } from "../init";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -77,6 +78,10 @@ async function main(): Promise<void> {
       process.exit(0);
     } else if (arg === "worktrees" || arg === "worktree") {
       await printWorktreesList(worktreeManager, cwd);
+      process.exit(0);
+    } else if (arg === "init") {
+      const initResult = runProjectInit({ cwd });
+      printInitSummary(initResult);
       process.exit(0);
     } else if (arg === "--resume" || arg === "-R" || arg === "resume") {
       resumeThreadId = args[++i];
@@ -404,6 +409,7 @@ ${style.bold("USAGE:")}
   groupy skills                   # List available domain skills
   groupy memories                 # View learned user preferences
   groupy worktrees                # List active isolated Git Worktrees
+  groupy init                     # Initialize or update AGENTS.md project instructions
 
 ${style.bold("OPTIONS:")}
   -R, --resume <id>        Resume an existing session from SQLite storage

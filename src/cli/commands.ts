@@ -24,6 +24,7 @@ import { CHROME_DEVTOOLS_MCP_SERVER_PATH } from "../mcp/servers/chrome-devtools"
 import { WEB_SEARCH_MCP_SERVER_PATH } from "../mcp/servers/web-search";
 import { SQLITE_MCP_SERVER_PATH } from "../mcp/servers/sqlite";
 import { getCliVersion } from "./version";
+import { runProjectInit, printInitSummary } from "../init";
 
 export interface SlashCommandDef {
   name: string;
@@ -32,6 +33,7 @@ export interface SlashCommandDef {
 
 export const AVAILABLE_SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "/help", description: "Show command list and help menu" },
+  { name: "/init", description: "Initialize or update AGENTS.md project instructions" },
   { name: "/stats", description: "Display session runtime, turn stats & sub-agent status" },
   { name: "/model", description: "Select or switch active AI model" },
   { name: "/reasoning", description: "Toggle internal reasoning chain visibility" },
@@ -143,6 +145,11 @@ export async function handleSlashCommand(
     case "/plan":
       ctx.session.setPermissionMode("plan");
       console.log(`\n  \x1b[38;2;95;175;175m⏸ Switched to Plan Mode (read-only planning, mutations blocked)\x1b[0m\n`);
+      return true;
+
+    case "/init":
+      const initResult = runProjectInit({ cwd: ctx.session.cwd });
+      printInitSummary(initResult);
       return true;
 
     case "/agents":
