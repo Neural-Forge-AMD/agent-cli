@@ -106,8 +106,8 @@ export class InteractiveLineEditor {
       let cursor = 0;
       let selectedIndex = 0;
       let scrollTop = 0;
-      let renderedMenuLines = 0;
       let popupDismissed = false;
+      let lastCursorRowFromTop = 0;
 
       if (process.stdin.isTTY) {
         try {
@@ -174,27 +174,31 @@ export class InteractiveLineEditor {
         if (scrollTop > maxScroll) scrollTop = maxScroll;
       };
 
-      const clearMenu = () => {
-        if (renderedMenuLines > 0) {
-          process.stdout.write("\x1b[J");
-          renderedMenuLines = 0;
-        }
-      };
-
       const redraw = () => {
-        // Clear anything below current prompt line
-        process.stdout.write("\x1b[J");
+        const termCols = getTerminalCols();
+        const visiblePromptWidth = this.promptSymbol.replace(/\x1b\[[0-9;]*m/g, "").length;
 
-        // Render input prompt + buffer
-        process.stdout.write(`\r\x1b[2K${this.promptSymbol}${buffer}`);
+        // 1. Move back up to top line of the prompt from last frame and clear down
+        if (lastCursorRowFromTop > 0) {
+          process.stdout.write(`\x1b[${lastCursorRowFromTop}A`);
+        }
+        process.stdout.write("\r\x1b[J");
+
+        // 2. Render input prompt + buffer
+        process.stdout.write(`${this.promptSymbol}${buffer}`);
+
+        // Compute how many rows the prompt + buffer occupy
+        const totalPromptChars = visiblePromptWidth + buffer.length;
+        const promptRows = Math.max(1, Math.floor(totalPromptChars / termCols) + 1);
 
         const slashMatches = getMatchingCommands();
         const activeFile = getActiveFileQuery();
         const fileMatches = activeFile ? getMatchingFiles(activeFile.query) : [];
 
+        let menuRows = 0;
+
         if (buffer.startsWith("/") && !popupDismissed && slashMatches.length > 0) {
-          // 1. Slash commands popup
-          const termCols = getTerminalCols();
+          // 3a. Slash commands popup
           const BOX_WIDTH = Math.max(20, Math.min(termCols - 4, 120));
           const maxVisible = Math.min(slashMatches.length, 7);
 
@@ -235,11 +239,9 @@ export class InteractiveLineEditor {
           for (const line of menuLines) {
             process.stdout.write(`\n\x1b[2K${line}`);
           }
-          renderedMenuLines = menuLines.length;
-          process.stdout.write(`\x1b[${renderedMenuLines}A`);
+          menuRows = menuLines.length;
         } else if (activeFile && !popupDismissed && fileMatches.length > 0) {
-          // 2. @file Autocomplete popup
-          const termCols = getTerminalCols();
+          // 3b. @file Autocomplete popup
           const BOX_WIDTH = Math.max(20, Math.min(termCols - 4, 120));
           const maxVisible = Math.min(fileMatches.length, 7);
 
@@ -286,27 +288,33 @@ export class InteractiveLineEditor {
           for (const line of menuLines) {
             process.stdout.write(`\n\x1b[2K${line}`);
           }
-          renderedMenuLines = menuLines.length;
-          process.stdout.write(`\x1b[${renderedMenuLines}A`);
+          menuRows = menuLines.length;
         } else {
-          // 3. Brainless Dual-rule Bottom Bar & Mode Status Line
+          // 3c. Default Bottom Rule & Mode Status Line
           const RULE_COLOR = "\x1b[38;2;60;60;68m";
           const bottomRule = `  ${RULE_COLOR}${getRule()}\x1b[0m`;
           const modeLine = this.getModeLine();
 
           process.stdout.write(`\n\x1b[2K${bottomRule}\n\x1b[2K${modeLine}`);
-          renderedMenuLines = 2;
-          process.stdout.write(`\x1b[2A`);
+          menuRows = 2;
         }
 
-        // Place physical cursor at current buffer cursor position
-        const visiblePromptLength = this.promptSymbol.replace(/\x1b\[[0-9;]*m/g, "").length;
-        const cursorCol = visiblePromptLength + cursor;
-        if (cursorCol > 0) {
-          process.stdout.write(`\r\x1b[${cursorCol}C`);
-        } else {
-          process.stdout.write("\r");
+        // 4. Position physical cursor exactly at buffer cursor position
+        const cursorCharsFromTop = visiblePromptWidth + cursor;
+        const cursorRow = Math.floor(cursorCharsFromTop / termCols);
+        const cursorCol = cursorCharsFromTop % termCols;
+
+        // Move up from the bottom of the rendered frame
+        const moveUpRows = (promptRows - 1 - cursorRow) + menuRows;
+        if (moveUpRows > 0) {
+          process.stdout.write(`\x1b[${moveUpRows}A`);
         }
+        process.stdout.write("\r");
+        if (cursorCol > 0) {
+          process.stdout.write(`\x1b[${cursorCol}C`);
+        }
+
+        lastCursorRowFromTop = cursorRow;
       };
 
       const onResize = () => {
@@ -320,17 +328,23 @@ export class InteractiveLineEditor {
         if (process.stdout && typeof process.stdout.removeListener === "function") {
           process.stdout.removeListener("resize", onResize);
         }
-        clearMenu();
         process.stdin.removeListener("keypress", onKeypress);
         if (process.stdin.isTTY) {
           try {
             process.stdin.setRawMode(false);
           } catch {}
         }
+
+        // Move to top of prompt and clear entire editor frame
+        if (lastCursorRowFromTop > 0) {
+          process.stdout.write(`\x1b[${lastCursorRowFromTop}A`);
+        }
+        process.stdout.write("\r\x1b[J");
+
         if (result.trim().length > 0 && !result.startsWith("/")) {
-          process.stdout.write(`\x1b[1A\r\x1b[2K\x1b[J${CliFormatter.formatClaudeUserPrompt(result)}\n\n`);
+          process.stdout.write(`${CliFormatter.formatClaudeUserPrompt(result)}\n\n`);
         } else {
-          process.stdout.write(`\x1b[1A\r\x1b[2K\x1b[J\n`);
+          process.stdout.write("\n");
         }
         resolve(result);
       };
@@ -352,7 +366,10 @@ export class InteractiveLineEditor {
           if (process.stdout && typeof process.stdout.removeListener === "function") {
             process.stdout.removeListener("resize", onResize);
           }
-          clearMenu();
+          if (lastCursorRowFromTop > 0) {
+            process.stdout.write(`\x1b[${lastCursorRowFromTop}A`);
+          }
+          process.stdout.write("\r\x1b[J");
           if (process.stdin.isTTY) {
             try {
               process.stdin.setRawMode(false);
@@ -368,12 +385,9 @@ export class InteractiveLineEditor {
 
         // Escape: dismiss popup if visible
         if (key.name === "escape") {
-          if (renderedMenuLines > 0) {
-            popupDismissed = true;
-            clearMenu();
-            redraw();
-            return;
-          }
+          popupDismissed = true;
+          redraw();
+          return;
         }
 
         // Ctrl+D (EOF)
