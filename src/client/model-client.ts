@@ -30,6 +30,7 @@ export type StreamChunkEvent =
       totalTokens?: number;
       inputTokens?: number;
       outputTokens?: number;
+      cachedTokens?: number;
     }
   | {
       type: "warning";
@@ -49,6 +50,7 @@ export interface ModelSamplingParams {
   maxTokens?: number;
   signal?: AbortSignal;
   maxRetries?: number;
+  enablePromptCache?: boolean;
 }
 
 export interface ModelClientSession {
@@ -60,6 +62,7 @@ export interface ModelClientConfig {
   baseUrl?: string;
   defaultModel?: string;
   maxRetries?: number;
+  enablePromptCache?: boolean;
 }
 
 export class ModelClient {
@@ -110,7 +113,17 @@ export class DefaultModelClientSession implements ModelClientSession {
       return;
     }
 
-    // Build messages from history
+    const enablePromptCache = params.enablePromptCache ?? this.config.enablePromptCache ?? true;
+
+    // Build messages from history with Prompt Caching support
+    const systemMessage: Record<string, unknown> = {
+      role: "system",
+      content: params.systemPrompt,
+    };
+    if (enablePromptCache) {
+      systemMessage.cache_control = { type: "ephemeral" };
+    }
+
     const messages: Array<{
       role: "system" | "user" | "assistant" | "tool";
       content?: string | null;
@@ -120,12 +133,8 @@ export class DefaultModelClientSession implements ModelClientSession {
         function: { name: string; arguments: string };
       }>;
       tool_call_id?: string;
-    }> = [
-      {
-        role: "system",
-        content: params.systemPrompt,
-      },
-    ];
+      cache_control?: { type: "ephemeral" };
+    }> = [systemMessage as any];
 
     for (let i = 0; i < params.history.length; i++) {
       const item = params.history[i]!;
@@ -241,7 +250,19 @@ export class DefaultModelClientSession implements ModelClientSession {
     };
 
     if (toolsPayload && toolsPayload.length > 0) {
-      body.tools = toolsPayload;
+      if (enablePromptCache && toolsPayload.length > 0) {
+        const clonedTools = [...toolsPayload];
+        const lastIdx = clonedTools.length - 1;
+        if (clonedTools[lastIdx] && typeof clonedTools[lastIdx] === "object") {
+          clonedTools[lastIdx] = {
+            ...clonedTools[lastIdx],
+            cache_control: { type: "ephemeral" },
+          };
+        }
+        body.tools = clonedTools;
+      } else {
+        body.tools = toolsPayload;
+      }
       body.tool_choice = "auto";
     }
 
@@ -251,6 +272,7 @@ export class DefaultModelClientSession implements ModelClientSession {
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      "anthropic-beta": "prompt-caching-2024-07-25",
     };
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
@@ -357,7 +379,12 @@ export class DefaultModelClientSession implements ModelClientSession {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let usageMetrics: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
+    let usageMetrics: {
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+      cachedTokens?: number;
+    } = {};
 
     let inThinkTag = false;
 
@@ -403,6 +430,7 @@ export class DefaultModelClientSession implements ModelClientSession {
               inputTokens: usageMetrics.inputTokens,
               outputTokens: usageMetrics.outputTokens,
               totalTokens: usageMetrics.totalTokens,
+              cachedTokens: usageMetrics.cachedTokens,
             };
             return;
           }
@@ -415,10 +443,17 @@ export class DefaultModelClientSession implements ModelClientSession {
           }
 
           if (parsed.usage) {
+            const cached =
+              parsed.usage.prompt_tokens_details?.cached_tokens ??
+              parsed.usage.cache_read_input_tokens ??
+              parsed.usage.cached_content_token_count ??
+              0;
+
             usageMetrics = {
               inputTokens: parsed.usage.prompt_tokens,
               outputTokens: parsed.usage.completion_tokens,
               totalTokens: parsed.usage.total_tokens,
+              cachedTokens: cached > 0 ? cached : undefined,
             };
           }
 

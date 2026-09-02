@@ -13,6 +13,9 @@ export interface CompactionConfig {
   retainedRecentTurns?: number;
 }
 
+export const DEFAULT_MAX_CONTEXT_TOKENS = 256000;
+export const DEFAULT_AUTO_COMPACT_THRESHOLD_TOKENS = 180000;
+
 export function estimateItemTokens(item: ConversationItem): number {
   const text =
     item.type === "user_message"

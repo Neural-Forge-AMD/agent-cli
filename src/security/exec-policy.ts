@@ -59,9 +59,9 @@ export class ExecPolicy {
   shouldPromptFileEdit(filePath?: string): { prompt: boolean; isPlanBlocked?: boolean; reason?: string } {
     if (this.mode === "plan") {
       return {
-        prompt: false,
+        prompt: true,
         isPlanBlocked: true,
-        reason: "Plan Mode is active. Mutating files is not allowed while planning.",
+        reason: `[Plan Mode Gate] Approval required to mutate '${filePath || "file"}' and proceed with implementation.`,
       };
     }
 
@@ -83,12 +83,15 @@ export class ExecPolicy {
     const trimmed = command.trim();
 
     if (this.mode === "plan") {
-      // In plan mode, only allow non-mutating inspection commands
-      const isReadOnly = /^(git\s+(status|log|diff|branch|show)|ls|dir|cat|type|grep|rg|find|pwd|which|where)\b/i.test(trimmed);
+      // In plan mode, allow read-only inspection; require prompt gate for mutating commands
+      const isReadOnly = /^(git\s+(status|log|diff|branch|show|rev-parse)|ls|dir|cat|type|grep|rg|find|pwd|which|where)\b/i.test(trimmed);
       if (isReadOnly) {
         return { decision: "allow", reason: "Read-only inspection allowed in Plan mode" };
       }
-      return { decision: "deny", reason: "Cannot execute mutating shell commands in Plan mode" };
+      return {
+        decision: "prompt",
+        reason: `[Plan Mode Gate] Approval required to execute shell command '${trimmed}' in Plan Mode`,
+      };
     }
 
     if (this.mode === "manual") {

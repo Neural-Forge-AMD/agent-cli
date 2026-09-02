@@ -77,21 +77,23 @@ export const writeFileTool: Tool = {
     // Permission & Plan Mode verification
     if (ctx.execPolicy) {
       const evalResult = ctx.execPolicy.shouldPromptFileEdit(rawPath);
-      if (evalResult.isPlanBlocked || ctx.mode === "plan") {
-        return {
-          output: "Error: Cannot write or mutate files while in Plan Mode. Please present the implementation plan first.",
-          isError: true,
-        };
-      }
       if (evalResult.prompt && ctx.requestApproval) {
         const approval = await ctx.requestApproval(
-          `Write file: ${rawPath}`,
+          evalResult.reason || `Write file: ${rawPath}`,
           `write_file ${rawPath}`
         );
         const allowed = typeof approval === "object" ? approval.allowed : Boolean(approval);
         if (!allowed) {
-          return { output: `Action rejected by user: write_file '${rawPath}'`, isError: true };
+          return {
+            output: `[Plan Mode Gate]: File creation declined by user for '${rawPath}'. Please refine your implementation plan or ask the user for guidance.`,
+            isError: true,
+          };
         }
+      } else if (evalResult.isPlanBlocked || ctx.mode === "plan") {
+        return {
+          output: `[Plan Mode Gate]: Cannot write or mutate '${rawPath}' while in Plan Mode without user approval. Please present your implementation plan first.`,
+          isError: true,
+        };
       }
     }
 
@@ -100,7 +102,14 @@ export const writeFileTool: Tool = {
       writeFileSync(filePath, String(args.content ?? ""), "utf8");
       return { output: `Successfully wrote to '${args.path}'` };
     } catch (err) {
-      return { output: `Failed to write file: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      return {
+        output: `Failed to write file '${rawPath}': ${err instanceof Error ? err.message : String(err)}
+[Systematic Error Recovery Checklist]:
+1. Check directory permissions and ensure the path is valid within the workspace.
+2. If the path contains non-existent nested folders, they should be auto-created.
+3. Verify that the file is not locked by another active process.`,
+        isError: true,
+      };
     }
   },
 };

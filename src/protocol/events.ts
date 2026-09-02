@@ -51,6 +51,7 @@ export type EventMsg =
       totalTokens?: number;
       inputTokens?: number;
       outputTokens?: number;
+      cachedTokens?: number;
       contextTokens?: number;
       maxContextTokens?: number;
     }

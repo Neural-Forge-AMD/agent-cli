@@ -22,6 +22,7 @@ export interface TurnSummaryMetrics {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
+  cachedTokens?: number;
   contextTokens?: number;
   maxContextTokens?: number;
   sessionUptimeMs?: number;
@@ -236,11 +237,16 @@ export class CliFormatter {
     const durationSec = (metrics.durationMs / 1000).toFixed(1);
     const parts: string[] = [`${c.bold}${durationSec}s${c.reset}`];
 
-    // Explicit Input and Output tokens
+    // Explicit Input, Output, and Cached tokens
     if (metrics.inputTokens !== undefined || metrics.outputTokens !== undefined) {
       const inStr = metrics.inputTokens !== undefined ? formatTokens(metrics.inputTokens) : "0";
       const outStr = metrics.outputTokens !== undefined ? formatTokens(metrics.outputTokens) : "0";
-      parts.push(`${style.cyan(`${inStr} in`)} ${style.dim("/")} ${style.cyan(`${outStr} out`)}`);
+      if (metrics.cachedTokens !== undefined && metrics.cachedTokens > 0) {
+        const cachedStr = formatTokens(metrics.cachedTokens);
+        parts.push(`${style.cyan(`${inStr} in`)} ${style.dim(`(${cachedStr} cached)`)} ${style.dim("/")} ${style.cyan(`${outStr} out`)}`);
+      } else {
+        parts.push(`${style.cyan(`${inStr} in`)} ${style.dim("/")} ${style.cyan(`${outStr} out`)}`);
+      }
     } else if (metrics.totalTokens !== undefined && metrics.totalTokens > 0) {
       parts.push(`${style.dim(`${formatTokens(metrics.totalTokens)} tokens`)}`);
     }

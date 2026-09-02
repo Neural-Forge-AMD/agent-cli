@@ -39,10 +39,10 @@ describe("Claude Code 4-Mode Permission & Security Engine", () => {
       expect(policy.shouldPromptFileEdit("src/app.ts").prompt).toBe(true);
       expect(policy.shouldPromptFileEdit("src/app.ts").reason).toContain("Manual mode");
 
-      // Plan mode -> block file mutations
+      // Plan mode -> block file mutations / prompt for approval gate
       policy.setMode("plan");
       expect(policy.shouldPromptFileEdit("src/app.ts").isPlanBlocked).toBe(true);
-      expect(policy.shouldPromptFileEdit("src/app.ts").reason).toContain("Plan Mode is active");
+      expect(policy.shouldPromptFileEdit("src/app.ts").reason).toContain("Plan Mode Gate");
     });
 
     it("should evaluate shell commands according to active mode", () => {
@@ -63,10 +63,10 @@ describe("Claude Code 4-Mode Permission & Security Engine", () => {
       expect(policy.evaluate("git status").decision).toBe("allow");
       expect(policy.evaluate("npm run deploy").decision).toBe("prompt");
 
-      // Plan mode -> allow only read-only queries, deny mutating commands
+      // Plan mode -> allow only read-only queries, prompt for mutating commands
       policy.setMode("plan");
       expect(policy.evaluate("git status").decision).toBe("allow");
-      expect(policy.evaluate("npm install").decision).toBe("deny");
+      expect(policy.evaluate("npm install").decision).toBe("prompt");
     });
   });
 
@@ -89,7 +89,7 @@ describe("Claude Code 4-Mode Permission & Security Engine", () => {
       expect(session.collaborationMode).toBe("default");
     });
 
-    it("should block writeFileTool in plan mode", async () => {
+    it("should block writeFileTool in plan mode when unapproved", async () => {
       const tools = createDefaultTools();
       const policy = new ExecPolicy("plan");
 
@@ -101,10 +101,10 @@ describe("Claude Code 4-Mode Permission & Security Engine", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.output).toContain("Cannot write or mutate files while in Plan Mode");
+      expect(result.output).toContain("Plan Mode");
     });
 
-    it("should block applyPatchTool in plan mode", async () => {
+    it("should block applyPatchTool in plan mode when unapproved", async () => {
       const tools = createDefaultTools();
       const policy = new ExecPolicy("plan");
 
@@ -116,7 +116,36 @@ describe("Claude Code 4-Mode Permission & Security Engine", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.output).toContain("Cannot mutate files while in Plan Mode");
+      expect(result.output).toContain("Plan Mode");
+    });
+
+    it("should allow mutating tools through Terminal Approval Gate in plan mode when user approves", async () => {
+      const tools = createDefaultTools();
+      const policy = new ExecPolicy("plan");
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+      const { rmSync, existsSync } = await import("node:fs");
+      const tempDir = join(tmpdir(), `groupy-perm-test-${Date.now()}`);
+
+      let requestedDescription = "";
+      const result = await tools.execute("write_file", { path: "test_approved.txt", content: "approved content" }, {
+        cwd: tempDir,
+        turnId: "t1",
+        execPolicy: policy,
+        mode: "plan",
+        requestApproval: async (description) => {
+          requestedDescription = description;
+          return { allowed: true };
+        },
+      });
+
+      expect(requestedDescription).toContain("Plan Mode Gate");
+      expect(result.isError).toBeFalsy();
+      expect(result.output).toContain("Successfully wrote");
+
+      try {
+        if (existsSync(tempDir)) rmSync(tempDir, { recursive: true, force: true });
+      } catch {}
     });
   });
 

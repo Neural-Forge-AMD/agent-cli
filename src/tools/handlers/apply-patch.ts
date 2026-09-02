@@ -50,21 +50,23 @@ export const applyPatchTool: Tool = {
     // Permission & Plan Mode verification
     if (ctx.execPolicy) {
       const evalResult = ctx.execPolicy.shouldPromptFileEdit(rawPath);
-      if (evalResult.isPlanBlocked || ctx.mode === "plan") {
-        return {
-          output: "Error: Cannot mutate files while in Plan Mode. Please present the implementation plan first.",
-          isError: true,
-        };
-      }
       if (evalResult.prompt && ctx.requestApproval) {
         const approval = await ctx.requestApproval(
-          `Apply patch to: ${rawPath}`,
+          evalResult.reason || `Apply patch to: ${rawPath}`,
           `apply_patch ${rawPath}`
         );
         const allowed = typeof approval === "object" ? approval.allowed : Boolean(approval);
         if (!allowed) {
-          return { output: `Action rejected by user: apply_patch '${rawPath}'`, isError: true };
+          return {
+            output: `[Plan Mode Gate]: File modification declined by user for '${rawPath}'. Please refine your implementation plan or ask the user for guidance.`,
+            isError: true,
+          };
         }
+      } else if (evalResult.isPlanBlocked || ctx.mode === "plan") {
+        return {
+          output: `[Plan Mode Gate]: Cannot mutate '${rawPath}' while in Plan Mode without user approval. Please present your implementation plan first.`,
+          isError: true,
+        };
       }
     }
 
@@ -72,7 +74,11 @@ export const applyPatchTool: Tool = {
     if (!existsSync(filePath)) {
       if (targetContent) {
         return {
-          output: `Error: Target file '${rawPath}' does not exist, but targetContent was provided.`,
+          output: `Error: Target file '${rawPath}' does not exist, but targetContent was provided.
+[Systematic Error Recovery Checklist]:
+1. Root Cause: Trying to patch a non-existent file with targetContent.
+2. Fix: For creating new files, leave 'targetContent' empty and provide full contents in 'replacementContent'.
+3. Alternatively, check if the file path '${rawPath}' was mistyped.`,
           isError: true,
         };
       }
@@ -82,7 +88,7 @@ export const applyPatchTool: Tool = {
         return { output: `Successfully created new file '${rawPath}'` };
       } catch (err) {
         return {
-          output: `Failed to create file: ${err instanceof Error ? err.message : String(err)}`,
+          output: `Failed to create file '${rawPath}': ${err instanceof Error ? err.message : String(err)}`,
           isError: true,
         };
       }
@@ -94,7 +100,11 @@ export const applyPatchTool: Tool = {
 
       if (!targetContent) {
         return {
-          output: `Error: File '${rawPath}' already exists. Specify targetContent to replace specific lines or use overwrite.`,
+          output: `Error: File '${rawPath}' already exists, but targetContent was empty.
+[Systematic Error Recovery Checklist]:
+1. Root Cause: An existing file requires targetContent to specify which lines to replace.
+2. Fix: Call 'read_file' on '${rawPath}', extract the exact target lines, and provide them in 'targetContent'.
+3. To overwrite the whole file, use the 'write_file' tool instead.`,
           isError: true,
         };
       }
@@ -103,7 +113,11 @@ export const applyPatchTool: Tool = {
       const firstIndex = originalFileContent.indexOf(targetContent);
       if (firstIndex === -1) {
         return {
-          output: `Error: targetContent was not found in '${rawPath}'. Please verify file contents before editing.`,
+          output: `Error: targetContent was not found in '${rawPath}'.
+[Systematic Error Recovery Checklist]:
+1. Root Cause: The snippet in targetContent does not match the actual file content (differences in whitespace, indentation, line endings, or prior edits).
+2. Action: Call 'read_file' on '${rawPath}' to inspect current exact lines and indentation.
+3. Fix: Provide the exact matching lines (including leading spaces) or wider context, then retry 'apply_patch'.`,
           isError: true,
         };
       }
@@ -111,7 +125,11 @@ export const applyPatchTool: Tool = {
       const secondIndex = originalFileContent.indexOf(targetContent, firstIndex + 1);
       if (secondIndex !== -1) {
         return {
-          output: `Error: targetContent matched multiple locations in '${rawPath}'. Provide more surrounding context lines to ensure uniqueness.`,
+          output: `Error: targetContent matched multiple locations in '${rawPath}'.
+[Systematic Error Recovery Checklist]:
+1. Root Cause: targetContent is ambiguous and occurs multiple times in the file.
+2. Action: Include 2-3 additional surrounding lines (before or after the target block) to make the target snippet uniquely identifiable.
+3. Fix: Re-run 'apply_patch' with the extended unique block.`,
           isError: true,
         };
       }
@@ -128,7 +146,7 @@ export const applyPatchTool: Tool = {
       };
     } catch (err) {
       return {
-        output: `Failed to apply patch: ${err instanceof Error ? err.message : String(err)}`,
+        output: `Failed to apply patch to '${rawPath}': ${err instanceof Error ? err.message : String(err)}`,
         isError: true,
       };
     }

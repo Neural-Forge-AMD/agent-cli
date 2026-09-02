@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { PromptTemplateLoader } from "../src/prompts/loader";
 import { AgentsMdLoader } from "../src/prompts/agents-md";
-import { buildSystemPrompt } from "../src/context/instructions";
+import { buildSystemPrompt, buildStructuredSystemPrompt } from "../src/context/instructions";
 
 describe("Prompt Templates & AGENTS.md Subsystem", () => {
   let testDir: string;
@@ -134,8 +134,8 @@ describe("Prompt Templates & AGENTS.md Subsystem", () => {
     });
   });
 
-  describe("buildSystemPrompt Integration", () => {
-    it("should assemble system prompt using markdown templates, personality, orchestrator, and project instructions", () => {
+  describe("buildSystemPrompt & XML Modularity Integration", () => {
+    it("should assemble structured XML system prompt with clean static/dynamic separation", () => {
       // Setup temporary project with AGENTS.md
       mkdirSync(join(testDir, ".git"), { recursive: true });
       writeFileSync(
@@ -143,7 +143,7 @@ describe("Prompt Templates & AGENTS.md Subsystem", () => {
         "Always use typescript and write unit tests."
       );
 
-      const prompt = buildSystemPrompt({
+      const structured = buildStructuredSystemPrompt({
         collaborationMode: "plan",
         personality: "pragmatic",
         isOrchestrator: true,
@@ -154,19 +154,47 @@ describe("Prompt Templates & AGENTS.md Subsystem", () => {
         memoriesPrompt: "User prefers concise answers.",
         skillsPrompt: "Available skills: search, patch",
         developerInstructions: "Follow strict coding rules.",
+        worldStatePrompt: "Current time is 22:00",
       });
 
+      const prompt = structured.text;
+
+      expect(prompt).toContain("<system_identity>");
       expect(prompt).toContain("You are Groupy");
+      expect(prompt).toContain("<personality kind=\"pragmatic\">");
       expect(prompt).toContain("deeply pragmatic, effective software engineer");
+      expect(prompt).toContain("<orchestrator_guidelines>");
       expect(prompt).toContain("Prefer multiple sub-agents to parallelize your work");
+      expect(prompt).toContain("<collaboration_mode name=\"plan\">");
       expect(prompt).toContain("# Plan Mode (Conversational)");
+      expect(prompt).toContain("<sandbox_policy mode=\"workspace_write\">");
       expect(prompt).toContain("`sandbox_mode` is `workspace-write`");
+      expect(prompt).toContain("<approval_policy policy=\"on_request\">");
       expect(prompt).toContain("# Escalation Requests");
-      expect(prompt).toContain("## Project Instructions (AGENTS.md)");
+      expect(prompt).toContain("<project_instructions source=\"AGENTS.md\">");
       expect(prompt).toContain("Always use typescript and write unit tests.");
+      expect(prompt).toContain("<persistent_memories>");
       expect(prompt).toContain("User prefers concise answers.");
+      expect(prompt).toContain("<domain_skills>");
       expect(prompt).toContain("Available skills: search, patch");
-      expect(prompt).toContain("## Developer Instructions\nFollow strict coding rules.");
+      expect(prompt).toContain("<developer_instructions>");
+      expect(prompt).toContain("Follow strict coding rules.");
+      expect(prompt).toContain("<runtime_environment>");
+      expect(prompt).toContain("Current time is 22:00");
+
+      // Verify static prefix separation for prompt caching
+      expect(structured.staticPrefix).toContain("<system_identity>");
+      expect(structured.staticPrefix).not.toContain("<runtime_environment>");
+      expect(structured.dynamicSuffix).toContain("<runtime_environment>");
+
+      // Verify standard buildSystemPrompt returns the same XML-tagged text
+      const standardPrompt = buildSystemPrompt({
+        collaborationMode: "plan",
+        personality: "pragmatic",
+        cwd: testDir,
+      });
+      expect(standardPrompt).toContain("<system_identity>");
+      expect(standardPrompt).toContain("<collaboration_mode name=\"plan\">");
     });
   });
 });

@@ -109,4 +109,85 @@ describe("ModelClient Resilient Transport & 10 Retries", () => {
 
     mockFailingServer.close();
   }, 15000);
+
+  test("Sends cache_control headers/body and accurately parses cached token usage", async () => {
+    let capturedBody: any = null;
+    let capturedHeaders: any = null;
+
+    const mockCacheServer = http.createServer((req, res) => {
+      capturedHeaders = req.headers;
+      let bodyData = "";
+      req.on("data", (c) => (bodyData += c));
+      req.on("end", () => {
+        try {
+          capturedBody = JSON.parse(bodyData);
+        } catch {}
+
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: "Cached response text" } }],
+            usage: {
+              prompt_tokens: 1200,
+              completion_tokens: 150,
+              total_tokens: 1350,
+              prompt_tokens_details: {
+                cached_tokens: 950,
+              },
+            },
+          })}\n\n`
+        );
+        res.write("data: [DONE]\n\n");
+        res.end();
+      });
+    });
+
+    const port = await new Promise<number>((resolve) => {
+      mockCacheServer.listen(0, "127.0.0.1", () => {
+        const addr = mockCacheServer.address() as any;
+        resolve(addr.port);
+      });
+    });
+
+    const client = new ModelClient({
+      baseUrl: `http://127.0.0.1:${port}`,
+      apiKey: "test-cache-key",
+      enablePromptCache: true,
+    });
+
+    const session = client.newSession();
+    const chunks: any[] = [];
+
+    for await (const chunk of session.stream({
+      model: "test-model",
+      systemPrompt: "<system_identity>Test prompt</system_identity>",
+      history: [{ id: "1", type: "user_message", content: "hello", createdAt: Date.now() }],
+      tools: [
+        {
+          type: "function",
+          function: { name: "test_tool", description: "test" },
+        },
+      ],
+      enablePromptCache: true,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(capturedHeaders["anthropic-beta"]).toBe("prompt-caching-2024-07-25");
+    expect(capturedBody.messages[0].cache_control).toEqual({ type: "ephemeral" });
+    expect(capturedBody.tools[0].cache_control).toEqual({ type: "ephemeral" });
+
+    const doneChunk = chunks.find((c) => c.type === "done");
+    expect(doneChunk).toBeDefined();
+    expect(doneChunk.inputTokens).toBe(1200);
+    expect(doneChunk.outputTokens).toBe(150);
+    expect(doneChunk.cachedTokens).toBe(950);
+
+    mockCacheServer.close();
+  });
 });

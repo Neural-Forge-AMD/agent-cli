@@ -10,9 +10,15 @@ import type { TurnContext } from "./turn-context";
 import type { TurnInputRequest } from "../protocol/ops";
 import type { FunctionCallItem, FunctionCallOutputItem, AgentMessageItem } from "../protocol/items";
 import { TurnAbortedError } from "../protocol/errors";
-import { estimateTotalTokens, compactHistory } from "../context/compactor";
+import {
+  estimateTotalTokens,
+  compactHistory,
+  DEFAULT_MAX_CONTEXT_TOKENS,
+  DEFAULT_AUTO_COMPACT_THRESHOLD_TOKENS,
+} from "../context/compactor";
 import { captureWorldState, formatWorldStatePrompt } from "../context/world-state";
 import { buildSystemPrompt } from "../context/instructions";
+import { globalEphemeralWorkspace } from "../workspace/ephemeral";
 
 export async function runTurn(
   session: Session,
@@ -29,7 +35,7 @@ export async function runTurn(
   // Step 1: Pre-sampling Token Check & Auto-Compaction
   const currentHistory = session.getHistory();
   const estimatedTokens = estimateTotalTokens(currentHistory);
-  const maxTokenLimit = 80000; // Auto-compact if approaching 80k tokens
+  const maxTokenLimit = DEFAULT_AUTO_COMPACT_THRESHOLD_TOKENS; // Auto-compact if approaching 180k tokens
 
   if (estimatedTokens > maxTokenLimit) {
     const compacted = compactHistory(currentHistory);
@@ -74,6 +80,7 @@ export async function runTurn(
   let iteration = 0;
   let accumulatedInputTokens = 0;
   let accumulatedOutputTokens = 0;
+  let accumulatedCachedTokens = 0;
   const clientSession = session.modelClient.newSession();
 
   try {
@@ -93,13 +100,14 @@ export async function runTurn(
       let iterInputTokens = Math.ceil((effectiveSystemPrompt.length + JSON.stringify(session.getHistory()).length) / 4);
       let iterOutputTokens = 0;
 
-      // Stream sampling request
+      // Stream sampling request with Prompt Caching support
       const stream = clientSession.stream({
         model: turnContext.model,
         systemPrompt: effectiveSystemPrompt,
         history: session.getHistory(),
         tools: turnContext.tools,
         signal,
+        enablePromptCache: true,
       });
 
       for await (const chunk of stream) {
@@ -125,6 +133,7 @@ export async function runTurn(
         } else if (chunk.type === "done") {
           if (chunk.inputTokens !== undefined) iterInputTokens = chunk.inputTokens;
           if (chunk.outputTokens !== undefined) iterOutputTokens = chunk.outputTokens;
+          if (chunk.cachedTokens !== undefined) accumulatedCachedTokens += chunk.cachedTokens;
         } else if (chunk.type === "error") {
           throw chunk.error;
         }
@@ -252,11 +261,14 @@ export async function runTurn(
       // If no tool calls were made, check if the response was completely empty
       if (!currentAgentText.trim() && toolCallRequests.length === 0) {
         if (iteration === 1 && iteration < turnContext.maxIterations) {
-          // Model returned empty completion / stalled; re-prompt automatically
+          // Model returned empty completion / stalled; re-prompt automatically with systematic ReAct guidance
           session.addHistoryItem({
             id: `msg_nudge_${Date.now()}`,
             type: "user_message",
-            content: "Please proceed with executing the task. Provide your complete analysis or call the required tools now.",
+            content: `[Systematic ReAct Nudge]: No tool actions or answers were produced in this iteration.
+1. Review the user's objective and determine the immediate next action.
+2. If more context is required, invoke an exploration tool ('read_file', 'list_dir', 'grep_search', 'find_files').
+3. If ready to answer or implement, call the required mutating tool or deliver your full, concrete response now.`,
             createdAt: Date.now(),
           });
           continue;
@@ -268,7 +280,7 @@ export async function runTurn(
     }
 
     const totalContextTokens = estimateTotalTokens(session.getHistory()) + Math.ceil(effectiveSystemPrompt.length / 4);
-    const maxContextTokens = 128000;
+    const maxContextTokens = DEFAULT_MAX_CONTEXT_TOKENS;
 
     session.emitEvent({
       type: "TurnCompleted",
@@ -276,6 +288,7 @@ export async function runTurn(
       inputTokens: accumulatedInputTokens,
       outputTokens: accumulatedOutputTokens,
       totalTokens: accumulatedInputTokens + accumulatedOutputTokens,
+      cachedTokens: accumulatedCachedTokens > 0 ? accumulatedCachedTokens : undefined,
       contextTokens: totalContextTokens,
       maxContextTokens,
     });
@@ -291,5 +304,7 @@ export async function runTurn(
     });
   } finally {
     session.clearActiveTurn(turnId);
+    globalEphemeralWorkspace.cleanupTurn(turnId);
+    globalEphemeralWorkspace.cleanRootResidue(turnContext.environment.cwd);
   }
 }

@@ -210,6 +210,7 @@ export class CliRepl {
             inputTokens: msg.inputTokens,
             outputTokens: msg.outputTokens || (this.turnCharsOut > 0 ? Math.round(this.turnCharsOut / 3.8) : undefined),
             totalTokens: msg.totalTokens,
+            cachedTokens: msg.cachedTokens,
             contextTokens: msg.contextTokens,
             maxContextTokens: msg.maxContextTokens,
             sessionUptimeMs,

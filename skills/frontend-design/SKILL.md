@@ -85,6 +85,7 @@ Before building, evaluate the design direction:
 ❌ Default unstyled Tailwind/Bootstrap card grids
 ❌ Symmetrical, predictable cookie-cutter sections
 ❌ Decorative clutter with no functional or brand purpose
+❌ Creating detached temporary or scratch preview files (e.g. `tmp_*`, `draft.html`, `preview.tsx`) in root instead of in-place structured components
 
 ---
 

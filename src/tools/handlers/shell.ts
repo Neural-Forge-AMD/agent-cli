@@ -9,6 +9,7 @@ import type { Tool, ToolContext, ToolExecutionResult } from "../types";
 import { ExecPolicy } from "../../security/exec-policy";
 import { globalKernelSandbox } from "../../security/kernel/manager";
 import { globalPrefixRulesStore } from "../../storage/prefix-rules-store";
+import { globalEphemeralWorkspace } from "../../workspace/ephemeral";
 
 export interface ShellToolArgs {
   command: string;
@@ -131,6 +132,9 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
         ? ["cmd.exe", "/d", "/s", "/c", command]
         : ["/bin/sh", "-c", command];
 
+      // 4. Provision per-command ephemeral scratchpad for zero workspace pollution
+      const ephemeralScratchpad = globalEphemeralWorkspace.createScratchpad(ctx.turnId);
+
       // Build sandbox profile & wrap command (relax network if escalated)
       const sandboxProfile = globalKernelSandbox.buildDefaultProfile(ctx.cwd);
       if (isEscalated) {
@@ -143,6 +147,10 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
           cwd: ctx.cwd,
           env: {
             ...process.env,
+            TMPDIR: ephemeralScratchpad,
+            TEMP: ephemeralScratchpad,
+            TMP: ephemeralScratchpad,
+            GROUPY_SCRATCH_DIR: ephemeralScratchpad,
             ...(ctx as any).proxyEnv,
           },
           stdout: "pipe",
@@ -185,7 +193,13 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
         const outputParts: string[] = [];
         if (result.stdout) outputParts.push(result.stdout.trim());
         if (result.stderr) outputParts.push(`STDERR:\n${result.stderr.trim()}`);
-        if (result.code !== 0) outputParts.push(`\n[Process exited with code ${result.code}]`);
+        if (result.code !== 0) {
+          outputParts.push(`\n[Process exited with non-zero code ${result.code}]`);
+          outputParts.push(`[Systematic Error Recovery Checklist]:
+1. Inspect STDERR above to pinpoint syntax errors, failed test assertions, or missing dependencies.
+2. If this is a test failure, trace the failure in source code and fix the root cause before re-running.
+3. If this is a missing command/module, install or configure the prerequisite.`);
+        }
 
         const output = outputParts.join("\n") || "[Command completed with no output]";
         return {
@@ -194,9 +208,15 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
         };
       } catch (err) {
         return {
-          output: `Execution error: ${err instanceof Error ? err.message : String(err)}`,
+          output: `Execution error: ${err instanceof Error ? err.message : String(err)}
+[Systematic Error Recovery Checklist]:
+1. Verify command syntax, arguments, and executable availability in PATH.
+2. Check if the current working directory ('${ctx.cwd}') is valid.`,
           isError: true,
         };
+      } finally {
+        // Auto-clean per-command ephemeral scratchpad
+        globalEphemeralWorkspace.cleanup(ephemeralScratchpad);
       }
     },
   };

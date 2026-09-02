@@ -7,7 +7,7 @@ import { InteractiveLineEditor } from "./ui/line-editor";
 import { formatDuration } from "./ui/spinner";
 import { CliFormatter } from "./ui/formatter";
 import { promptInteractiveList, promptChoice } from "./ui/prompt";
-import { estimateTotalTokens } from "../context/compactor";
+import { estimateTotalTokens, DEFAULT_MAX_CONTEXT_TOKENS } from "../context/compactor";
 import { CredentialsStore } from "../auth/store";
 import { AuthClient } from "../auth/oauth";
 import { runSecurityScan } from "../security/scanner";
@@ -794,7 +794,7 @@ function printSessionStats(ctx: CommandContext): void {
   const turns = ctx.repl?.turnCount ?? 0;
   const history = ctx.session.getHistory();
   const historyTokens = estimateTotalTokens(history);
-  const maxTokens = 128000;
+  const maxTokens = DEFAULT_MAX_CONTEXT_TOKENS;
   const contextPct = Math.round((historyTokens / maxTokens) * 100);
   const colorFn = contextPct < 50 ? style.green : contextPct < 80 ? style.yellow : style.red;
 
