@@ -53,9 +53,14 @@ export async function captureWorldState(cwd: string): Promise<WorldState> {
 }
 
 export function formatWorldStatePrompt(state: WorldState): string {
+  const isWindows = process.platform === "win32";
+  const platformNote = isWindows
+    ? `Platform: Windows (${state.os}). Shell is cmd.exe / PowerShell. POSIX commands (grep, find, cat, sed, awk) are NOT supported in shell. ALWAYS use native grep_search, find_files, and read_file tools.`
+    : `Platform: ${state.os}`;
+
   const parts = [
     `Current Working Directory: ${state.cwd}`,
-    `Platform: ${state.os}`,
+    platformNote,
   ];
 
   if (state.gitBranch) {
