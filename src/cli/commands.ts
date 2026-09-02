@@ -323,20 +323,32 @@ export async function handleModelSelection(ctx: CommandContext, modelArg?: strin
     const headers: Record<string, string> = {};
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
 
-    const res = await fetch(`${baseUrl}/models`, { headers });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1500);
+
+    const res = await fetch(`${baseUrl}/models`, {
+      headers,
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
+
     if (res.ok) {
       const data = await res.json();
-      models = data.data || [];
+      if (Array.isArray(data.data) && data.data.length > 0) {
+        models = data.data;
+      }
     }
   } catch {}
 
   if (models.length === 0) {
     models = [
       { id: "gemini-2.5-flash", owned_by: "google" },
+      { id: "gemini-2.5-pro", owned_by: "google" },
       { id: "claude-3-5-sonnet", owned_by: "anthropic" },
       { id: "claude-3-7-sonnet", owned_by: "anthropic" },
       { id: "gpt-4o", owned_by: "openai" },
+      { id: "gpt-4o-mini", owned_by: "openai" },
       { id: "deepseek-r1", owned_by: "deepseek" },
+      { id: "deepseek-v3", owned_by: "deepseek" },
       { id: "qwen-2.5-coder", owned_by: "alibaba" },
     ];
   }
