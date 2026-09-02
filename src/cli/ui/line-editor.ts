@@ -81,8 +81,6 @@ export class InteractiveLineEditor {
       });
     }
 
-    ensureKeypressInitialized();
-
     return new Promise((resolve) => {
       let buffer = "";
       let cursor = 0;
@@ -90,6 +88,7 @@ export class InteractiveLineEditor {
       let scrollTop = 0;
       let popupDismissed = false;
       let lastCursorRowFromTop = 0;
+      let unsubscribeKeypress: (() => void) | null = null;
 
       if (process.stdin.isTTY) {
         try {
@@ -310,7 +309,10 @@ export class InteractiveLineEditor {
         if (process.stdout && typeof process.stdout.removeListener === "function") {
           process.stdout.removeListener("resize", onResize);
         }
-        activeKeypressHandler = null;
+        if (unsubscribeKeypress) {
+          unsubscribeKeypress();
+          unsubscribeKeypress = null;
+        }
         if (process.stdin.isTTY) {
           try {
             process.stdin.setRawMode(false);
@@ -352,7 +354,10 @@ export class InteractiveLineEditor {
             process.stdout.write(`\x1b[${lastCursorRowFromTop}A`);
           }
           process.stdout.write("\r\x1b[J");
-          activeKeypressHandler = null;
+          if (unsubscribeKeypress) {
+            unsubscribeKeypress();
+            unsubscribeKeypress = null;
+          }
           if (process.stdin.isTTY) {
             try {
               process.stdin.setRawMode(false);
@@ -529,7 +534,7 @@ export class InteractiveLineEditor {
         }
       };
 
-      activeKeypressHandler = onKeypress;
+      unsubscribeKeypress = addGlobalKeypressListener(onKeypress);
 
       // Initial prompt render with top-rule
       const RULE_COLOR = "\x1b[38;2;60;60;68m";
