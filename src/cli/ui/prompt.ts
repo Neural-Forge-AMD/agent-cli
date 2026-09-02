@@ -5,6 +5,7 @@
 
 import readline from "node:readline";
 import { c, style } from "./colors";
+import { addGlobalKeypressListener } from "./keypress";
 
 export interface ChoiceOption<T> {
   key: string;       // Hotkey, e.g. "y", "n", "a"
@@ -29,30 +30,23 @@ export async function promptChoice<T>(config: PromptChoiceConfig<T>): Promise<T>
 
   if (!process.stdin.isTTY) {
     if (process.env.NODE_ENV === "test" || !process.stdin.readable) {
-      return choices[defaultIndex]?.value ?? choices[0]!.value;
+      const def = choices[defaultIndex] || choices[0];
+      return def ? def.value : ("" as unknown as T);
     }
-    // Non-TTY / piped environment fallback
+    // Fallback for non-TTY / piped input
     return new Promise((resolve) => {
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      const hint = choices.map((c) => (c.isDefault ? `[${c.key.toUpperCase()}]` : `[${c.key}]`)).join("/");
-      
-      let resolved = false;
-      const doResolve = (val: T) => {
-        if (!resolved) {
-          resolved = true;
-          rl.close();
-          resolve(val);
-        }
-      };
-
-      rl.question(`${message} ${hint}: `, (answer) => {
+      const promptText = `  ${message} (${choices.map((c) => `[${c.key}] ${c.label}`).join(", ")}): `;
+      rl.question(promptText, (answer) => {
+        rl.close();
         const trimmed = answer.trim().toLowerCase();
-        const matched = choices.find((c) => c.key.toLowerCase() === trimmed);
-        doResolve(matched ? matched.value : choices[defaultIndex]!.value);
-      });
-
-      rl.on("close", () => {
-        doResolve(choices[defaultIndex]!.value);
+        const match = choices.find((c) => c.key.toLowerCase() === trimmed);
+        if (match) {
+          resolve(match.value);
+        } else {
+          const def = choices[defaultIndex] || choices[0];
+          resolve(def ? def.value : ("" as unknown as T));
+        }
       });
     });
   }
@@ -61,7 +55,6 @@ export async function promptChoice<T>(config: PromptChoiceConfig<T>): Promise<T>
     let selectedIndex = defaultIndex;
     if (selectedIndex < 0 || selectedIndex >= choices.length) selectedIndex = 0;
 
-    readline.emitKeypressEvents(process.stdin);
     const wasRaw = process.stdin.isRaw;
     try {
       process.stdin.setRawMode(true);
@@ -82,8 +75,13 @@ export async function promptChoice<T>(config: PromptChoiceConfig<T>): Promise<T>
       process.stdout.write(`\r\x1b[2K  ${style.bold(message)}\n\r\x1b[2K${parts.join("  ")}`);
     };
 
+    let unsubscribe: (() => void) | null = null;
+
     const cleanup = (confirmedChoice: ChoiceOption<T>) => {
-      process.stdin.removeListener("keypress", onKeypress);
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
       try {
         process.stdin.setRawMode(wasRaw ?? false);
       } catch {}
@@ -98,28 +96,14 @@ export async function promptChoice<T>(config: PromptChoiceConfig<T>): Promise<T>
 
       // Ctrl+C -> default / reject
       if (key.ctrl && key.name === "c") {
-        cleanup(choices.find((c) => c.key.toLowerCase() === "n") || choices[defaultIndex]!);
+        const def = choices[defaultIndex] || choices[0];
+        cleanup(def!);
         return;
       }
 
-      // Escape -> reject / default
-      if (key.name === "escape") {
-        cleanup(choices.find((c) => c.key.toLowerCase() === "n") || choices[defaultIndex]!);
-        return;
-      }
-
-      // Enter -> confirm current selectedIndex
-      if (key.name === "return" || key.name === "enter") {
-        cleanup(choices[selectedIndex]!);
-        return;
-      }
-
-      // Left Arrow
-      if (key.name === "left") {
+      // Left / Up -> previous
+      if (key.name === "left" || key.name === "up" || key.name === "h" || key.name === "k") {
         selectedIndex = (selectedIndex - 1 + choices.length) % choices.length;
-        // Move up 1 line to re-render properly
-        process.stdout.write("\x1b[1A");
-        render();
         return;
       }
 
@@ -198,7 +182,6 @@ export async function promptToolApproval(params: {
   return new Promise<"yes" | "no" | "always">((resolve) => {
     let selectedIndex = 1; // default to "Yes, proceed"
 
-    readline.emitKeypressEvents(process.stdin);
     const wasRaw = process.stdin.isRaw;
     try {
       process.stdin.setRawMode(true);
@@ -209,8 +192,13 @@ export async function promptToolApproval(params: {
       renderCard(selectedIndex);
     };
 
+    let unsubscribe: (() => void) | null = null;
+
     const cleanup = (val: "yes" | "no" | "always") => {
-      process.stdin.removeListener("keypress", onKeypress);
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
       try {
         process.stdin.setRawMode(wasRaw ?? false);
       } catch {}
@@ -256,7 +244,7 @@ export async function promptToolApproval(params: {
       if (_str?.toLowerCase() === "a") { cleanup("always"); return; }
     };
 
-    process.stdin.on("keypress", onKeypress);
+    unsubscribe = addGlobalKeypressListener(onKeypress);
     render();
   });
 }
@@ -408,7 +396,6 @@ export async function promptInteractiveList(config: InteractiveListConfig): Prom
     let scrollTop = 0;
     let renderedLines = 0;
 
-    readline.emitKeypressEvents(process.stdin);
     const wasRaw = process.stdin.isRaw;
     try {
       process.stdin.setRawMode(true);
@@ -510,6 +497,8 @@ export async function promptInteractiveList(config: InteractiveListConfig): Prom
       renderedLines = lines.length;
     };
 
+    let unsubscribe: (() => void) | null = null;
+
     const cleanup = (res: InteractiveListResult) => {
       // Clear menu box and restore cursor
       if (renderedLines > 0) {
@@ -518,7 +507,10 @@ export async function promptInteractiveList(config: InteractiveListConfig): Prom
       } else {
         process.stdout.write("\x1b[?25h");
       }
-      process.stdin.removeListener("keypress", onKeypress);
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
       try {
         process.stdin.setRawMode(wasRaw ?? false);
       } catch {}
@@ -600,7 +592,7 @@ export async function promptInteractiveList(config: InteractiveListConfig): Prom
       }
     };
 
-    process.stdin.on("keypress", onKeypress);
+    unsubscribe = addGlobalKeypressListener(onKeypress);
     render();
   });
 }

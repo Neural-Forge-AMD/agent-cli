@@ -3,6 +3,7 @@ import { c, style } from "./colors";
 import { AVAILABLE_SLASH_COMMANDS, type SlashCommandDef } from "../commands";
 import { FileSearchEngine } from "../../search/engine";
 import { CliFormatter } from "./formatter";
+import { addGlobalKeypressListener } from "./keypress";
 
 export type ClaudeMode = "auto" | "manual" | "accept-edits" | "plan";
 
@@ -12,25 +13,6 @@ export interface LineEditorOptions {
   initialMode?: ClaudeMode;
   onInterrupt?: () => void;
   onModeChange?: (mode: ClaudeMode) => void;
-}
-
-// Global safety state for Windows Bun terminal
-let keypressEventsInitialized = false;
-
-function ensureKeypressInitialized() {
-  if (!keypressEventsInitialized && process.stdin.isTTY) {
-    readline.emitKeypressEvents(process.stdin);
-    keypressEventsInitialized = true;
-
-    // Safety restore on unhandled exit
-    process.on("exit", () => {
-      if (process.stdin.isTTY) {
-        try {
-          process.stdin.setRawMode(false);
-        } catch {}
-      }
-    });
-  }
 }
 
 export class InteractiveLineEditor {
@@ -328,7 +310,7 @@ export class InteractiveLineEditor {
         if (process.stdout && typeof process.stdout.removeListener === "function") {
           process.stdout.removeListener("resize", onResize);
         }
-        process.stdin.removeListener("keypress", onKeypress);
+        activeKeypressHandler = null;
         if (process.stdin.isTTY) {
           try {
             process.stdin.setRawMode(false);
@@ -370,12 +352,12 @@ export class InteractiveLineEditor {
             process.stdout.write(`\x1b[${lastCursorRowFromTop}A`);
           }
           process.stdout.write("\r\x1b[J");
+          activeKeypressHandler = null;
           if (process.stdin.isTTY) {
             try {
               process.stdin.setRawMode(false);
             } catch {}
           }
-          process.stdin.removeListener("keypress", onKeypress);
           if (this.onInterrupt) {
             this.onInterrupt();
           }
@@ -547,7 +529,7 @@ export class InteractiveLineEditor {
         }
       };
 
-      process.stdin.on("keypress", onKeypress);
+      activeKeypressHandler = onKeypress;
 
       // Initial prompt render with top-rule
       const RULE_COLOR = "\x1b[38;2;60;60;68m";
