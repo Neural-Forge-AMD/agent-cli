@@ -186,7 +186,7 @@ export class SkillsLoader {
       } catch {}
     }
 
-    const result = Array.from(discovered.values());
+    const result = Array.from(discovered.values()).sort((a, b) => a.name.localeCompare(b.name));
     this.skillsCache.set(cacheKey, { timestamp: now, skills: result });
     return result;
   }
@@ -307,11 +307,11 @@ export class SkillsLoader {
     const skills = this.listSkills(cwd, { includeDisabled: false });
     if (skills.length === 0) return "";
 
-    // Prioritize ALL workspace skills first, then built-in skills, then global skills (to keep prompt lean & fast)
-    const workspaceSkills = skills.filter((s) => s.scope === "workspace");
-    const builtInSkills = skills.filter((s) => s.scope === "built-in");
-    const otherSkills = skills.filter((s) => s.scope !== "workspace" && s.scope !== "built-in");
-    const selectedSkills = [...workspaceSkills, ...builtInSkills, ...otherSkills].slice(0, 150);
+    // Prioritize ALL workspace skills first, then built-in skills, then global skills (sorted deterministically)
+    const workspaceSkills = skills.filter((s) => s.scope === "workspace").sort((a, b) => a.name.localeCompare(b.name));
+    const builtInSkills = skills.filter((s) => s.scope === "built-in").sort((a, b) => a.name.localeCompare(b.name));
+    const otherSkills = skills.filter((s) => s.scope !== "workspace" && s.scope !== "built-in").sort((a, b) => a.name.localeCompare(b.name));
+    const selectedSkills = [...workspaceSkills, ...builtInSkills, ...otherSkills].slice(0, 300);
 
     const lines = selectedSkills.map((s) => {
       const desc = s.shortDescription || s.description;
