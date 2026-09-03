@@ -7,7 +7,7 @@
 
 import { SqliteThreadStore } from "./sqlite-store";
 import { Session, type SessionOptions } from "../session/session";
-import type { ThreadRecord, ThreadListOptions } from "./types";
+import type { ThreadRecord, ThreadListOptions, RestoredSessionData } from "./types";
 import type { Item } from "../protocol/items";
 
 export class SessionPersistenceManager {
@@ -98,6 +98,36 @@ export class SessionPersistenceManager {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Detaches active auto-save event listeners from the current session.
+   */
+  unbindSession(): void {
+    for (const unsub of this.unsubscribers) {
+      try {
+        unsub();
+      } catch {}
+    }
+    this.unsubscribers = [];
+  }
+
+  /**
+   * Resumes a past session directly into an existing active Session instance.
+   * Restores historical items, switches the thread identifier, and re-binds persistence hooks.
+   */
+  resumeIntoSession(session: Session, threadId: string): RestoredSessionData | null {
+    const restored = this.loadSession(threadId);
+    if (!restored) return null;
+
+    this.unbindSession();
+    session.threadId = restored.thread.id;
+    session.setHistory(restored.items);
+    if (restored.thread.model) {
+      session.model = restored.thread.model;
+    }
+    this.bindSession(session, restored.thread.role);
+    return restored;
   }
 
   listSessions(options?: ThreadListOptions): ThreadRecord[] {

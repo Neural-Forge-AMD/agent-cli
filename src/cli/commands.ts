@@ -47,7 +47,8 @@ export const AVAILABLE_SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "/skills", description: "List domain skills in workspace & global" },
   { name: "/memories", description: "View learned preferences & memories" },
   { name: "/worktrees", description: "List active isolated Git Worktrees" },
-  { name: "/sessions", description: "List saved past sessions from SQLite store" },
+  { name: "/resume", description: "Resume a previous conversation session (/resume [id])" },
+  { name: "/sessions", description: "List and manage saved past sessions" },
   { name: "/role", description: "Select and inspect specialized agent roles & personas" },
   { name: "/security", description: "Scan codebase for vulnerabilities & secrets (Strix)" },
   { name: "/agents", description: "List active sub-agents & execution status" },
@@ -182,9 +183,10 @@ export async function handleSlashCommand(
       await printWorktrees(ctx);
       return true;
 
+    case "/resume":
     case "/sessions":
     case "/session":
-      await printSessions(ctx);
+      await handleResumeCommand(ctx, args);
       return true;
 
     case "/security":
@@ -743,43 +745,115 @@ function printMemories(ctx: CommandContext): void {
   console.log();
 }
 
-async function printSessions(ctx: CommandContext): Promise<void> {
+function formatRelativeTime(timestamp: number): string {
+  const diffMs = Math.max(0, Date.now() - timestamp);
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return new Date(timestamp).toLocaleDateString();
+}
+
+function printRecentConversation(items: any[]): void {
+  if (!items || items.length === 0) return;
+  const dialog = items
+    .filter(
+      (i) => i.type === "user_message" || i.type === "agent_message" || i.role === "user" || i.role === "assistant"
+    )
+    .slice(-3);
+
+  if (dialog.length === 0) return;
+
+  console.log(style.dim("  Recent context:"));
+  for (const item of dialog) {
+    const isUser = item.role === "user" || item.type === "user_message";
+    const text = typeof item.content === "string" ? item.content : (item.text || "");
+    const singleLine = text.trim().replace(/\s+/g, " ");
+    const preview = singleLine.length > 85 ? singleLine.slice(0, 82) + "..." : singleLine;
+    const badge = isUser ? style.brand("  ❯ User:") : style.cyan("  ● Assistant:");
+    console.log(`${badge} ${style.dim(preview)}`);
+  }
+  console.log();
+}
+
+export async function handleResumeCommand(ctx: CommandContext, args: string[] = []): Promise<void> {
   const storage = ctx.storageManager;
   if (!storage) {
-    console.log(style.yellow("Session persistence manager not active."));
+    console.log(style.yellow("\n  Session persistence manager not active.\n"));
     return;
   }
 
-  const threads = storage.listSessions();
-  if (threads.length === 0) {
-    console.log(style.dim("\n  No saved sessions in SQLite database.\n"));
+  const rawThreads = storage.listSessions();
+  if (rawThreads.length === 0) {
+    console.log(style.dim("\n  No saved conversation sessions found in SQLite database.\n"));
     return;
   }
 
+  // Sort by latest updated first
+  const threads = [...rawThreads].sort((a, b) => b.updatedAt - a.updatedAt);
+
+  // Check if an argument filter was passed
+  const filterArg = args[0]?.trim();
+  let defaultIdx = 0;
+  if (filterArg) {
+    const foundIdx = threads.findIndex(
+      (t) => t.id === filterArg || t.id.toLowerCase().startsWith(filterArg.toLowerCase())
+    );
+    if (foundIdx !== -1) {
+      defaultIdx = foundIdx;
+    }
+  }
+
+  // Non-interactive / piped stdin fallback
   if (!process.stdin.isTTY || process.env.NODE_ENV === "test" || !process.stdin.readable) {
+    if (filterArg) {
+      const match = threads[defaultIdx]!;
+      const restored = storage.resumeIntoSession(ctx.session, match.id);
+      if (restored) {
+        console.log(
+          style.green(
+            `\n  ✓ Resumed past session: ${style.bold(match.id)} (${restored.items.length} items, model: ${restored.thread.model || ctx.session.model})\n`
+          )
+        );
+        printRecentConversation(restored.items);
+      } else {
+        console.log(style.red(`\n  ✕ Failed to load session '${match.id}'.\n`));
+      }
+      return;
+    }
+
     console.log();
     console.log(style.bold("  Saved Sessions in SQLite Store:"));
     for (const t of threads) {
-      const dateStr = new Date(t.updatedAt).toLocaleString();
-      console.log(`    • ${style.cyan(t.id)} [${style.dim(t.model)}] - ${style.dim(dateStr)} (${t.itemsCount} items)`);
+      const timeStr = formatRelativeTime(t.updatedAt);
+      const titleStr = t.title && t.title !== "New Session" ? ` - "${t.title}"` : "";
+      console.log(`    • ${style.cyan(t.id)} [${style.dim(t.model)}]${titleStr} - ${style.dim(timeStr)} (${t.itemsCount ?? 0} items)`);
     }
     console.log();
     return;
   }
 
+  // Fully Interactive List Prompt
   const items = threads.map((t) => {
-    const dateStr = new Date(t.updatedAt).toLocaleString();
+    const timeStr = formatRelativeTime(t.updatedAt);
+    const titlePart = t.title && t.title !== "New Session" ? `"${t.title.slice(0, 36)}"` : undefined;
     return {
       id: t.id,
       label: t.id,
-      description: `${t.model} · ${t.itemsCount} items · ${dateStr}`,
+      badge: t.model,
+      description: [titlePart, `${t.itemsCount ?? 0} items`, timeStr].filter(Boolean).join(" · "),
     };
   });
 
   const res = await promptInteractiveList({
-    title: `🗄️ Saved SQLite Sessions (${threads.length} total)`,
+    title: `🗄️ Resume Past Conversation (${threads.length} saved)`,
     items,
     mode: "select",
+    defaultIndex: defaultIdx,
     onAction: (key, item, idx) => {
       if (key === "d") {
         storage.deleteSession(item.id);
@@ -788,17 +862,28 @@ async function printSessions(ctx: CommandContext): Promise<void> {
       }
       return false;
     },
-    customKeyHints: "↑/↓: navigate · Enter: resume session · d: delete · Esc: exit",
+    customKeyHints: "↑/↓: navigate · Enter: resume conversation · d: delete · Esc: cancel",
   });
 
   if (res.action === "select" && res.selectedItem) {
-    const session = storage.loadSession(res.selectedItem.id);
-    if (session) {
-      ctx.session.setHistory(session.items);
-      if (session.thread.model) ctx.session.model = session.thread.model;
-      console.log(style.green(`\n  ✓ Resumed past session: ${style.bold(res.selectedItem.id)} (${session.items.length} items)\n`));
+    const restored = storage.resumeIntoSession(ctx.session, res.selectedItem.id);
+    if (restored) {
+      console.log(
+        style.green(
+          `\n  ✓ Resumed past conversation: ${style.bold(res.selectedItem.id)} (${restored.items.length} items, model: ${restored.thread.model || ctx.session.model})\n`
+        )
+      );
+      printRecentConversation(restored.items);
+    } else {
+      console.log(style.red(`\n  ✕ Failed to load session '${res.selectedItem.id}'.\n`));
     }
+  } else {
+    console.log(style.dim("\n  Session resume cancelled.\n"));
   }
+}
+
+async function printSessions(ctx: CommandContext): Promise<void> {
+  await handleResumeCommand(ctx);
 }
 
 function printSessionStats(ctx: CommandContext): void {

@@ -120,6 +120,43 @@ describe("SQLite Thread Store & Session Persistence", () => {
     expect(updatedItems.length).toBe(4); // 2 user + 2 agent messages
   }, 15000);
 
+  test("resumes past session directly into existing active session via resumeIntoSession", async () => {
+    const store = new SqliteThreadStore(":memory:");
+    manager = new SessionPersistenceManager(store);
+    const modelClient = new MockStorageModelClient();
+
+    // 1. Initial Session
+    const sessionA = new Session({
+      threadId: "thread_orig_005",
+      model: "claude-3-5-sonnet",
+      modelClient,
+    });
+    manager.bindSession(sessionA, "default");
+    await sessionA.promptAndWait("Hello from original thread");
+
+    // 2. Another active Session that wants to resume thread_orig_005
+    const sessionB = new Session({
+      threadId: "thread_fresh_006",
+      model: "gpt-4o",
+      modelClient,
+    });
+    manager.bindSession(sessionB, "default");
+    expect(sessionB.threadId).toBe("thread_fresh_006");
+    expect(sessionB.getHistory().length).toBe(0);
+
+    // 3. Resume thread_orig_005 into sessionB
+    const restored = manager.resumeIntoSession(sessionB, "thread_orig_005");
+    expect(restored).not.toBeNull();
+    expect(sessionB.threadId).toBe("thread_orig_005");
+    expect(sessionB.model).toBe("claude-3-5-sonnet");
+    expect(sessionB.getHistory().length).toBe(2);
+
+    // 4. Submit follow-up turn in sessionB - should persist to thread_orig_005
+    await sessionB.promptAndWait("Follow-up in resumed session");
+    const items = store.getItems("thread_orig_005");
+    expect(items.length).toBe(4);
+  }, 15000);
+
   test("deletes thread and cascades items deletion", () => {
     const store = new SqliteThreadStore(":memory:");
     manager = new SessionPersistenceManager(store);

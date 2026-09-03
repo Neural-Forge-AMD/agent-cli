@@ -36,7 +36,7 @@ export interface SessionOptions {
 }
 
 export class Session {
-  public readonly threadId: string;
+  public threadId: string;
   public model: string;
   public readonly cwd: string;
   public readonly systemPrompt: string;
