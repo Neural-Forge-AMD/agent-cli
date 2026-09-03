@@ -65,6 +65,9 @@ describe("Ephemeral Workspace & Zero-Pollution Subsystem", () => {
     writeFileSync(join(testCwd, "preview_card.html"), "<div>preview</div>", "utf8");
     writeFileSync(join(testCwd, "temp_data.csv"), "a,b,c", "utf8");
     writeFileSync(join(testCwd, "build.tmp"), "binary", "utf8");
+    writeFileSync(join(testCwd, "build_log.txt"), "build logs", "utf8");
+    writeFileSync(join(testCwd, "dev_log.txt"), "dev logs", "utf8");
+    writeFileSync(join(testCwd, "check.ps1"), "Get-Process", "utf8");
 
     const cleaned = manager.cleanRootResidue(testCwd);
 
@@ -74,10 +77,15 @@ describe("Ephemeral Workspace & Zero-Pollution Subsystem", () => {
     expect(cleaned).toContain("preview_card.html");
     expect(cleaned).toContain("temp_data.csv");
     expect(cleaned).toContain("build.tmp");
+    expect(cleaned).toContain("build_log.txt");
+    expect(cleaned).toContain("dev_log.txt");
+    expect(cleaned).toContain("check.ps1");
 
     // Check disk state
     expect(existsSync(join(testCwd, "tmp_output.json"))).toBe(false);
     expect(existsSync(join(testCwd, "draft_design.html"))).toBe(false);
+    expect(existsSync(join(testCwd, "build_log.txt"))).toBe(false);
+    expect(existsSync(join(testCwd, "check.ps1"))).toBe(false);
     expect(existsSync(join(testCwd, "package.json"))).toBe(true);
     expect(existsSync(join(testCwd, "README.md"))).toBe(true);
     expect(existsSync(join(testCwd, "src", "index.ts"))).toBe(true);

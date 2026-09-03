@@ -17,12 +17,13 @@ All AI agents, sub-agents, and domain skills must adhere to these non-negotiable
 NEVER DUMP TEMPORARY, SCRATCH, OR DRAFT FILES INTO THE WORKSPACE ROOT OR RANDOM FOLDERS.
 ```
 
-* ❌ **Forbidden Patterns**:
-  * `temp_*`, `tmp_*`, `scratch_*`, `draft_*`, `sandbox_*`
-  * `test_preview.html`, `design_draft.tsx`, `preview.html`, `mock_*.json`
-  * One-off scripts dumped into root directory (`test.js`, `run.py`, `script.sh`)
+* ❌ **Forbidden Anti-Patterns**:
+  * Temporary scripts or logs in project root: `build_log.txt`, `dev_log.txt`, `output.log`, `*.log`, `*_log.txt`, `check.ps1`, `test.ps1`, `script.sh`
+  * Command output redirection to files (e.g. `npm run build > build_log.txt 2>&1`)
+  * `temp_*`, `tmp_*`, `scratch_*`, `draft_*`, `sandbox_*`, `test_preview.html`, `preview.html`, `mock_*.json`
 * ✅ **Mandatory Practice**:
-  * Implement code **in-place** directly within the project's real directory architecture (e.g., `src/components/`, `src/pages/`, `lib/`, `tests/`).
+  * **Direct Command Execution**: Run build, test, and verification commands directly via the `shell` tool and inspect standard output / standard error directly from the returned tool output. Never dump stdout/stderr into `.txt` or `.log` files.
+  * **In-Place Architecture**: Implement code directly within the project's real directory architecture (e.g., `components/`, `src/components/`, `app/`, `lib/`, `tests/`).
   * If a file path is ambiguous, inspect existing project structure (`list_dir`, `find_files`) to locate the correct directory before writing.
 
 ---
