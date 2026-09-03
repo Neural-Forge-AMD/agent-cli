@@ -16,6 +16,7 @@ import { registerMultiAgentTools } from "../agents/tools";
 import { McpManager } from "../mcp/manager";
 import { SessionPersistenceManager } from "../storage/manager";
 import { SkillsLoader } from "../skills/loader";
+import { installSkill, removeSkill } from "../skills/installer";
 import { MemoryStore } from "../memories/store";
 import { WorktreeManager } from "../worktree/manager";
 import { ModelClient } from "../client/model-client";
@@ -70,9 +71,22 @@ async function main(): Promise<void> {
     } else if (arg === "list" || arg === "sessions" || arg === "--list") {
       printSessionsList(storageManager);
       process.exit(0);
-    } else if (arg === "skills") {
-      printSkillsList(skillsLoader, cwd);
-      process.exit(0);
+    } else if (arg === "skills" || arg === "skill") {
+      const subAction = args[i + 1];
+      const target = args[i + 2];
+      const isGlobal = args.includes("--global") || args.includes("-g");
+      if (subAction && !subAction.startsWith("-")) {
+        await handleSkillCliCommand(subAction, target, {
+          cwd,
+          isGlobal,
+          baseUrl,
+          loader: skillsLoader,
+        });
+        process.exit(0);
+      } else {
+        printSkillsList(skillsLoader, cwd);
+        process.exit(0);
+      }
     } else if (arg === "memories" || arg === "memory") {
       printMemoriesList(memoryStore, cwd);
       process.exit(0);
@@ -349,6 +363,53 @@ function printSessionsList(storage: SessionPersistenceManager): void {
     console.log(`\nResume a session with: ${style.bold("groupy --resume <thread_id>")}`);
   }
   console.log();
+}
+
+async function handleSkillCliCommand(
+  action: string,
+  targetName: string | undefined,
+  options: { cwd: string; isGlobal: boolean; baseUrl?: string; loader: SkillsLoader }
+): Promise<void> {
+  const act = action.toLowerCase();
+  if (act === "add" || act === "install") {
+    if (!targetName) {
+      console.error(style.yellow("\nUsage: pikaa skill add <skill-name> [--global]\n"));
+      process.exit(1);
+    }
+    try {
+      console.log(style.dim(`\nFetching skill '${targetName}' from catalog...`));
+      const res = await installSkill(targetName, {
+        cwd: options.cwd,
+        global: options.isGlobal,
+        backendUrl: options.baseUrl,
+      });
+      console.log(style.green(`\n✓ ${res.message}`));
+      console.log(style.dim(`  To start using this skill in an AI coding session, simply run: pikaa\n`));
+    } catch (err: any) {
+      console.error(style.red(`\n✕ Failed to install skill: ${err.message}\n`));
+      process.exit(1);
+    }
+  } else if (act === "remove" || act === "uninstall" || act === "rm") {
+    if (!targetName) {
+      console.error(style.yellow("\nUsage: pikaa skill remove <skill-name> [--global]\n"));
+      process.exit(1);
+    }
+    const res = removeSkill(targetName, { cwd: options.cwd, global: options.isGlobal });
+    if (res.removed) {
+      console.log(style.green(`\n✓ Skill '${targetName}' removed from ${res.targetDir}\n`));
+    } else {
+      console.log(style.yellow(`\n✕ Skill '${targetName}' was not found in ${res.targetDir}\n`));
+    }
+  } else if (act === "list" || act === "ls") {
+    printSkillsList(options.loader, options.cwd);
+  } else {
+    // If targetName was passed directly as `pikaa skill <name>` without action, default to install
+    if (act && !targetName) {
+      return handleSkillCliCommand("add", act, options);
+    }
+    console.error(style.yellow(`\nUnknown skill action '${action}'. Available: add, remove, list\n`));
+    process.exit(1);
+  }
 }
 
 function printSkillsList(loader: SkillsLoader, cwd: string): void {

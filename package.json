@@ -16,7 +16,6 @@
     "bin",
     "templates",
     "assets",
-    "skills/**/SKILL.md",
     "README.md",
     "LICENSE"
   ],

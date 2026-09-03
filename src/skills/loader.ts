@@ -136,10 +136,7 @@ export class SkillsLoader {
     }
 
     if (this.includeGlobal) {
-      roots.push(
-        getGlobalSkillsDir(),
-        resolve(homedir(), ".gemini", "config", "skills")
-      );
+      roots.push(getGlobalSkillsDir());
     }
 
     roots.push(...this.customRoots.map((r) => resolve(r)));

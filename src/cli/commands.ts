@@ -16,6 +16,7 @@ import type { AgentSpawner } from "../agents/spawner";
 import type { McpManager } from "../mcp/manager";
 import type { SessionPersistenceManager } from "../storage/manager";
 import type { SkillsLoader } from "../skills/loader";
+import { installSkill, removeSkill } from "../skills/installer";
 import type { MemoryStore } from "../memories/store";
 import type { WorktreeManager } from "../worktree/manager";
 import type { CliRepl } from "./repl";
@@ -44,7 +45,7 @@ export const AVAILABLE_SLASH_COMMANDS: SlashCommandDef[] = [
   { name: "/manual", description: "Switch to Manual Mode (all tools require user confirmation)" },
   { name: "/accept-edits", description: "Switch to Accept Edits Mode (file edits auto-approved, shell prompts)" },
   { name: "/plan", description: "Switch to Plan Mode (read-only planning, mutations blocked)" },
-  { name: "/skills", description: "List domain skills in workspace & global" },
+  { name: "/skills", description: "Manage domain skills (/skills, /skill add <name>, /skill remove <name>)" },
   { name: "/memories", description: "View learned preferences & memories" },
   { name: "/worktrees", description: "List active isolated Git Worktrees" },
   { name: "/resume", description: "Resume a previous conversation session (/resume [id])" },
@@ -601,6 +602,39 @@ async function handleSkillsCommand(ctx: CommandContext, args: string[]): Promise
 
   const sub = (args[0] || "").toLowerCase();
   const target = (args[1] || "").toLowerCase();
+
+  if (sub === "install" || sub === "add") {
+    if (!target) {
+      console.log(style.yellow("Usage: /skill add <skill-name> [--global]"));
+      return;
+    }
+    const isGlobal = args.includes("--global") || args.includes("-g");
+    try {
+      console.log(style.dim(`\n  Fetching skill '${target}' from catalog...`));
+      const res = await installSkill(target, { cwd: ctx.session.cwd, global: isGlobal });
+      loader.clearCache();
+      console.log(style.green(`\n  ✓ ${res.message}\n`));
+    } catch (err: any) {
+      console.log(style.red(`\n  ✕ Failed to install skill: ${err.message}\n`));
+    }
+    return;
+  }
+
+  if (sub === "remove" || sub === "uninstall" || sub === "rm") {
+    if (!target) {
+      console.log(style.yellow("Usage: /skill remove <skill-name> [--global]"));
+      return;
+    }
+    const isGlobal = args.includes("--global") || args.includes("-g");
+    const res = removeSkill(target, { cwd: ctx.session.cwd, global: isGlobal });
+    loader.clearCache();
+    if (res.removed) {
+      console.log(style.green(`\n  ✓ Skill '${target}' removed from ${res.targetDir}\n`));
+    } else {
+      console.log(style.yellow(`\n  ✕ Skill '${target}' was not found in ${res.targetDir}\n`));
+    }
+    return;
+  }
 
   if (sub === "disable" || sub === "off") {
     if (!target) {

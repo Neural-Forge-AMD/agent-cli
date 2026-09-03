@@ -77,40 +77,45 @@ description: "Step by step production deployment checklist."
     expect(loaded?.instructions).toContain("Run `bun test`");
   });
 
-  test("SkillsLoader discovers built-in skills (ponytail, tdd, systematic-debugging)", () => {
+  test("SkillsLoader discovers zero built-in skills by default on fresh install", () => {
     const loader = new SkillsLoader({ includeGlobal: false, includeBuiltIn: true });
     const skills = loader.listSkills(process.cwd());
-
-    const names = skills.map((s) => s.name);
-    expect(names).toContain("ponytail");
-    expect(names).toContain("tdd");
-    expect(names).toContain("systematic-debugging");
-    expect(names).toContain("verification-before-completion");
-
-    const loaded = loader.loadSkill(process.cwd(), "ponytail");
-    expect(loaded).not.toBeNull();
-    expect(loaded?.instructions).toContain("7-Step Engineering Ladder");
+    expect(skills.length).toBe(0);
   });
 
   test("SkillsLoader supports disabling and re-enabling skills", () => {
-    const loader = new SkillsLoader({ includeGlobal: false, includeBuiltIn: true });
+    const skillDir = join(testTmpDir, "toggle-skill");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      `---
+name: toggle-skill
+description: Toggle test skill.
+---
+# Toggle Skill Instructions
+Toggle logic check.
+`,
+      "utf8"
+    );
+
+    const loader = new SkillsLoader({ customRoots: [testTmpDir], includeGlobal: false, includeBuiltIn: false });
     
-    expect(loader.isSkillDisabled("ponytail")).toBe(false);
+    expect(loader.isSkillDisabled("toggle-skill")).toBe(false);
     
     // 1. Disable skill
-    loader.disableSkill("ponytail");
-    expect(loader.isSkillDisabled("ponytail")).toBe(true);
+    loader.disableSkill("toggle-skill");
+    expect(loader.isSkillDisabled("toggle-skill")).toBe(true);
 
-    const activeSkills = loader.listSkills(process.cwd(), { includeDisabled: false });
-    expect(activeSkills.map((s) => s.name)).not.toContain("ponytail");
+    const activeSkills = loader.listSkills(testTmpDir, { includeDisabled: false });
+    expect(activeSkills.map((s) => s.name)).not.toContain("toggle-skill");
 
     // When disabled, loadSkill returns null
-    expect(loader.loadSkill(process.cwd(), "ponytail")).toBeNull();
+    expect(loader.loadSkill(testTmpDir, "toggle-skill")).toBeNull();
 
     // 2. Re-enable skill
-    loader.enableSkill("ponytail");
-    expect(loader.isSkillDisabled("ponytail")).toBe(false);
-    expect(loader.loadSkill(process.cwd(), "ponytail")).not.toBeNull();
+    loader.enableSkill("toggle-skill");
+    expect(loader.isSkillDisabled("toggle-skill")).toBe(false);
+    expect(loader.loadSkill(testTmpDir, "toggle-skill")).not.toBeNull();
   });
 
   test("load_skill tool returns full skill instructions through ToolRouter", async () => {

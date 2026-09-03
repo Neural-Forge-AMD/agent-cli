@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Session } from "../src/session/session";
@@ -25,6 +25,35 @@ describe("Autonomous Skills & Sub-Agent Delegation (Antigravity/Claude Code patt
     mkdirSync(testDir, { recursive: true });
     skillsLoader = new SkillsLoader({ includeGlobal: false, includeBuiltIn: true });
     memoryStore = new MemoryStore();
+
+    const skillDir = join(testDir, ".agents", "skills", "frontend-design");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      `---
+name: frontend-design
+description: Frontend design skill
+---
+Design Feasibility & Impact Index (DFII)
+Differentiation Anchor
+Typography
+`,
+      "utf8"
+    );
+
+    const debugSkillDir = join(testDir, ".agents", "skills", "systematic-debugging");
+    mkdirSync(debugSkillDir, { recursive: true });
+    writeFileSync(
+      join(debugSkillDir, "SKILL.md"),
+      `---
+name: systematic-debugging
+description: Systematic debugging guide
+---
+# Systematic Debugging
+Phase 1: Root Cause Investigation
+`,
+      "utf8"
+    );
   });
 
   afterEach(() => {
@@ -195,7 +224,7 @@ describe("Autonomous Skills & Sub-Agent Delegation (Antigravity/Claude Code patt
     expect(waitCall).toBeDefined();
   });
 
-  it("should discover and load built-in frontend-design skill with DFII rubric and aesthetic mandate", () => {
+  it("should discover and load workspace frontend-design skill with DFII rubric and aesthetic mandate", () => {
     const skills = skillsLoader.listSkills(testDir);
     const names = skills.map((s) => s.name);
     expect(names).toContain("frontend-design");
