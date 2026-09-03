@@ -334,6 +334,16 @@ export class CliRepl {
     });
 
     while (!this.isClosed) {
+      // Yield to event loop allowing OS terminal to drain pending stdout frames before entering raw mode
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // Safe non-blocking GC cleanup after large token turns
+      if (typeof Bun !== "undefined" && typeof (Bun as any).gc === "function") {
+        try {
+          (Bun as any).gc(false);
+        } catch {}
+      }
+
       let rawLine: string;
       try {
         rawLine = await editor.readLine();

@@ -59,6 +59,14 @@ export class WindowsSandbox {
     }
 
     try {
+      // Close previous Job Object to prevent kernel handle leakage
+      if (this.jobObjectHandle) {
+        try {
+          this.kernel32.symbols.CloseHandle(this.jobObjectHandle);
+        } catch {}
+        this.jobObjectHandle = null;
+      }
+
       // Create an anonymous Job Object
       const jobHandle = this.kernel32.symbols.CreateJobObjectW(null, null);
       if (!jobHandle || jobHandle === 0) {

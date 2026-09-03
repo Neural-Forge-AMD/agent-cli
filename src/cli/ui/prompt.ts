@@ -5,7 +5,7 @@
 
 import readline from "node:readline";
 import { c, style } from "./colors";
-import { addGlobalKeypressListener } from "./keypress";
+import { addGlobalKeypressListener, ensureRawMode } from "./keypress";
 
 export interface ChoiceOption<T> {
   key: string;       // Hotkey, e.g. "y", "n", "a"
@@ -55,11 +55,8 @@ export async function promptChoice<T>(config: PromptChoiceConfig<T>): Promise<T>
     let selectedIndex = defaultIndex;
     if (selectedIndex < 0 || selectedIndex >= choices.length) selectedIndex = 0;
 
-    const wasRaw = process.stdin.isRaw;
-    try {
-      process.stdin.setRawMode(true);
-    } catch {}
-    process.stdin.resume();
+    const wasRaw = process.stdin.isRaw ?? false;
+    ensureRawMode(true);
 
     const render = () => {
       const parts = choices.map((choice, idx) => {
@@ -82,9 +79,7 @@ export async function promptChoice<T>(config: PromptChoiceConfig<T>): Promise<T>
         unsubscribe();
         unsubscribe = null;
       }
-      try {
-        process.stdin.setRawMode(wasRaw ?? false);
-      } catch {}
+      ensureRawMode(wasRaw);
 
       // Render finalized concise badge
       process.stdout.write(`\r\x1b[1A\r\x1b[2K  ${style.bold(message)} ${style.cyan(`[${confirmedChoice.key}] ${confirmedChoice.label}`)}\n\r\x1b[2K`);
@@ -182,11 +177,8 @@ export async function promptToolApproval(params: {
   return new Promise<"yes" | "no" | "always">((resolve) => {
     let selectedIndex = 1; // default to "Yes, proceed"
 
-    const wasRaw = process.stdin.isRaw;
-    try {
-      process.stdin.setRawMode(true);
-    } catch {}
-    process.stdin.resume();
+    const wasRaw = process.stdin.isRaw ?? false;
+    ensureRawMode(true);
 
     const render = () => {
       renderCard(selectedIndex);
@@ -199,9 +191,7 @@ export async function promptToolApproval(params: {
         unsubscribe();
         unsubscribe = null;
       }
-      try {
-        process.stdin.setRawMode(wasRaw ?? false);
-      } catch {}
+      ensureRawMode(wasRaw);
       console.log();
       resolve(val);
     };
@@ -396,11 +386,8 @@ export async function promptInteractiveList(config: InteractiveListConfig): Prom
     let scrollTop = 0;
     let renderedLines = 0;
 
-    const wasRaw = process.stdin.isRaw;
-    try {
-      process.stdin.setRawMode(true);
-    } catch {}
-    process.stdin.resume();
+    const wasRaw = process.stdin.isRaw ?? false;
+    ensureRawMode(true);
 
     // Hide cursor during interactive menu navigation to prevent cursor jump flicker
     process.stdout.write("\x1b[?25l");
@@ -511,9 +498,7 @@ export async function promptInteractiveList(config: InteractiveListConfig): Prom
         unsubscribe();
         unsubscribe = null;
       }
-      try {
-        process.stdin.setRawMode(wasRaw ?? false);
-      } catch {}
+      ensureRawMode(wasRaw);
       resolve(res);
     };
 
