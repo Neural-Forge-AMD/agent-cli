@@ -86,7 +86,7 @@ jobs:
       - name: Install Dependencies
         run: bun install
 
-      - name: Compile All 6 Platform Standalone Binaries
+      - name: Compile All 8 Platform Standalone Binaries & Sub-Packages
         run: bun run build:binaries
 
       - name: Package Archives & Checksums for GitHub Release
@@ -95,7 +95,9 @@ jobs:
           cp dist/bin/* dist/release/
           cd dist/bin
           tar -czf ../release/pikaa-linux-x64.tar.gz pikaa-linux-x64
+          tar -czf ../release/pikaa-linux-x64-musl.tar.gz pikaa-linux-x64-musl
           tar -czf ../release/pikaa-linux-arm64.tar.gz pikaa-linux-arm64
+          tar -czf ../release/pikaa-linux-arm64-musl.tar.gz pikaa-linux-arm64-musl
           tar -czf ../release/pikaa-darwin-x64.tar.gz pikaa-darwin-x64
           tar -czf ../release/pikaa-darwin-arm64.tar.gz pikaa-darwin-arm64
           zip -9 ../release/pikaa-windows-x64.zip pikaa-windows-x64.exe
@@ -115,10 +117,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish Package to NPM Registry
+      - name: Publish Platform Sub-Packages & Root Package to NPM
         run: |
-          rm -rf dist/bin dist/release
           bun run build:js
-          npm publish --access public
+          bun run publish:packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
