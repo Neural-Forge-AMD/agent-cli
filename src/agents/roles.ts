@@ -31,6 +31,15 @@ export class AgentRoleRegistry {
       systemPrompt:
         "You are Groupy, an expert autonomous software engineer. Think carefully, use tools surgically, and verify every step.",
       nicknameCandidates: ["Pikaa", "Heca", "Bankli", "Moli"],
+      // Explicit allowedToolNames prevents silent inheritance of every parent tool (including future tools).
+      // spawn_agent is intentionally included here; depth-guard in AgentSpawner strips it at maxDepth.
+      allowedToolNames: [
+        "read_file", "view_file", "write_file", "apply_patch", "list_dir",
+        "shell", "update_plan", "ask_question", "request_user_input",
+        "remember", "list_memories", "read_memory", "save_memory",
+        "spawn_agent", "wait_agent", "send_input", "close_agent", "list_agents",
+        "create_worktree", "list_worktrees", "merge_worktree",
+      ],
     });
 
     // 2. Code Reviewer
@@ -155,7 +164,16 @@ export class AgentRoleRegistry {
   }
 
   /**
-   * Filters a ToolRouter based on role allowedToolNames (if specified)
+   * Filters a ToolRouter based on role allowedToolNames (if specified).
+   *
+   * MCP tools follow the naming convention `mcp__<server>__<toolName>`.
+   * To allow specific MCP tools a role must either:
+   *   - List them exactly: "mcp__github__list_issues"
+   *   - Use a server-scoped wildcard: "mcp__github__*" (grants all tools of that server only)
+   *
+   * The previous blanket `t.name.startsWith('mcp__')` pass has been removed because it
+   * leaked all MCP tools (GitHub, DB connections, HTTP, etc.) to every role regardless of
+   * its allowedToolNames list, defeating least-privilege enforcement.
    */
   filterRouterForRole(sourceRouter: ToolRouter, roleName?: string): ToolRouter {
     if (!roleName) return sourceRouter;
@@ -163,7 +181,12 @@ export class AgentRoleRegistry {
     if (!role || !role.allowedToolNames) return sourceRouter;
 
     const filtered = sourceRouter.list().filter((t) => {
-      return role.allowedToolNames!.some((allowed) => t.name === allowed || t.name.startsWith(`mcp__`));
+      return role.allowedToolNames!.some((allowed) => {
+        if (t.name === allowed) return true;
+        // Server-scoped wildcard: "mcp__github__*" matches all tools from the "github" MCP server
+        if (allowed.endsWith("*") && t.name.startsWith(allowed.slice(0, -1))) return true;
+        return false;
+      });
     });
 
     const newRouter = new (sourceRouter.constructor as typeof ToolRouter)();
