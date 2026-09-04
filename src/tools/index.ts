@@ -9,7 +9,7 @@ export * from "./handlers/plan";
 import { ToolRouter } from "./router";
 import { applyPatchTool } from "./handlers/apply-patch";
 import { shellTool } from "./handlers/shell";
-import { readFileTool, writeFileTool, listDirTool } from "./handlers/file-ops";
+import { readFileTool, viewFileTool, writeFileTool, listDirTool } from "./handlers/file-ops";
 import { requestUserInputTool, askQuestionTool } from "./handlers/request-user-input";
 import { updatePlanTool } from "./handlers/plan";
 import { createFileSearchTools } from "../search/tools";
@@ -36,6 +36,7 @@ export function createDefaultTools(options: DefaultToolsOptions = {}): ToolRoute
   router.register(applyPatchTool);
   router.register(shellTool);
   router.register(readFileTool);
+  router.register(viewFileTool);
   router.register(writeFileTool);
   router.register(listDirTool);
   router.register(requestUserInputTool);

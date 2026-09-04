@@ -120,5 +120,13 @@ export function createFileSearchTools(engine = new FileSearchEngine()): Tool[] {
     },
   };
 
-  return [grepSearchTool, findFilesTool];
+  const findByNameTool: Tool = {
+    name: "find_by_name",
+    description:
+      "Search for files and directories across the workspace matching a name or glob pattern. Alias for find_files matching Antigravity & Claude Code conventions.",
+    parameters: findFilesTool.parameters,
+    execute: findFilesTool.execute,
+  };
+
+  return [grepSearchTool, findFilesTool, findByNameTool];
 }
