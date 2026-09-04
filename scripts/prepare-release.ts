@@ -44,6 +44,11 @@ async function main() {
     console.log(`📌 Triggered directly by tag: v${tagVersion}`);
     if (pkg.version !== tagVersion) {
       pkg.version = tagVersion;
+      if (pkg.optionalDependencies) {
+        for (const k of Object.keys(pkg.optionalDependencies)) {
+          pkg.optionalDependencies[k] = tagVersion;
+        }
+      }
       writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
       console.log(`✓ Synced package.json version to ${tagVersion}`);
     }
@@ -75,6 +80,11 @@ async function main() {
 
     console.log(`📈 New version: ${targetVersion}`);
     pkg.version = targetVersion;
+    if (pkg.optionalDependencies) {
+      for (const k of Object.keys(pkg.optionalDependencies)) {
+        pkg.optionalDependencies[k] = targetVersion;
+      }
+    }
     writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
 
     // Commit and push the bumped version
