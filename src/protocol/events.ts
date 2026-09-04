@@ -62,6 +62,7 @@ export type EventMsg =
       toolName: string;
       command?: string;
       description: string;
+      prefixRule?: string[];
     }
   | {
       type: "UserQuestionRequired";

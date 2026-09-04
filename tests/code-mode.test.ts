@@ -153,4 +153,22 @@ describe("Code-Mode Batch Execution Sandbox", () => {
     expect(toolCall.isError).toBeFalsy();
     expect(modified).toContain("tracked_file.txt");
   });
+
+  test("prevents sandbox escape via globalThis.process and globalThis.Bun", async () => {
+    const result = await runtime.execute(
+      {
+        code: `
+          text("hasProcess: " + (typeof process));
+          text("hasGlobalProcess: " + (globalThis.process !== undefined));
+          text("hasGlobalBun: " + (globalThis.Bun !== undefined));
+        `,
+      },
+      { cwd: testDir, turnId: "turn_code_mode_escape_check" }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.output).toContain("hasProcess: undefined");
+    expect(result.output).toContain("hasGlobalProcess: false");
+    expect(result.output).toContain("hasGlobalBun: false");
+  });
 });

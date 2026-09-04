@@ -50,8 +50,41 @@ export function compactHistory(
     return [...history];
   }
 
-  const itemsToCompact = history.slice(0, history.length - retainedRecentItems);
-  const recentItems = history.slice(history.length - retainedRecentItems);
+  // 1. Find a clean turn boundary (user_message) near the desired retention cutoff
+  const targetCutoff = history.length - retainedRecentItems;
+  let bestCutoff = -1;
+
+  // Search backward for the nearest user_message to keep complete turns intact
+  for (let i = targetCutoff; i >= 0; i--) {
+    if (history[i]?.type === "user_message") {
+      bestCutoff = i;
+      break;
+    }
+  }
+
+  // If no user_message found backward, search forward
+  if (bestCutoff <= 0) {
+    for (let i = targetCutoff + 1; i < history.length; i++) {
+      if (history[i]?.type === "user_message") {
+        bestCutoff = i;
+        break;
+      }
+    }
+  }
+
+  let cutoffIndex = bestCutoff > 0 ? bestCutoff : targetCutoff;
+
+  // Invariant: Never allow recentItems to start with a function_call_output (which would orphan it)
+  while (cutoffIndex < history.length && history[cutoffIndex]?.type === "function_call_output") {
+    cutoffIndex++;
+  }
+
+  if (cutoffIndex <= 0 || cutoffIndex >= history.length) {
+    return [...history];
+  }
+
+  const itemsToCompact = history.slice(0, cutoffIndex);
+  const recentItems = history.slice(cutoffIndex);
 
   // Generate structured summary of compacted items
   const summaryParts: string[] = ["### Summary of previous conversation context:"];
@@ -61,6 +94,8 @@ export function compactHistory(
       summaryParts.push(`- User: ${item.content.slice(0, 200)}`);
     } else if (item.type === "function_call") {
       summaryParts.push(`- Executed tool: ${item.name}`);
+    } else if (item.type === "function_call_output") {
+      summaryParts.push(`  Tool output: ${item.output.slice(0, 100)}`);
     } else if (item.type === "agent_message") {
       summaryParts.push(`- Assistant: ${item.content.slice(0, 200)}`);
     }

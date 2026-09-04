@@ -145,6 +145,15 @@ export class PrefixRulesStore {
    */
   private matchesPrefix(cmdTokens: string[], prefixTokens: string[]): boolean {
     if (prefixTokens.length > cmdTokens.length) return false;
+
+    // Disallow prefix matching if command tokens contain unparsed shell chaining operators
+    const SHELL_OPERATORS = new Set([";", "&&", "||", "|", "&", ";;", "&|"]);
+    for (const token of cmdTokens) {
+      if (SHELL_OPERATORS.has(token) || token.includes(";") || token.includes("&&") || token.includes("||")) {
+        return false;
+      }
+    }
+
     for (let i = 0; i < prefixTokens.length; i++) {
       const cmd = cmdTokens[i];
       const prefix = prefixTokens[i];

@@ -66,4 +66,19 @@ describe("ExecPolicy Security Rules", () => {
     expect(policy.evaluate("untrusted_tool_xyz --run").decision).toBe("prompt");
     expect(policy.evaluate("./unknown_script.bin").decision).toBe("prompt");
   });
+
+  test("preserves strictly denied commands even when wildcard allow rule is added for session", () => {
+    const policy = new ExecPolicy();
+    policy.addRule(/.*/, "allow", "User allowed all standard actions");
+
+    // Standard commands are now allowed
+    expect(policy.evaluate("npm install my-package").decision).toBe("allow");
+
+    // But strictly denied commands (mkfs, format, raw dd, reboot) REMAIN strictly denied!
+    expect(policy.evaluate("mkfs.ext4 /dev/sda1").decision).toBe("deny");
+    expect(policy.evaluate("dd if=/dev/zero of=/dev/nvme0n1").decision).toBe("deny");
+    expect(policy.evaluate("reboot").decision).toBe("deny");
+    expect(policy.evaluate("/sbin/reboot").decision).toBe("deny");
+    expect(policy.evaluate("shutdown -h now").decision).toBe("deny");
+  });
 });

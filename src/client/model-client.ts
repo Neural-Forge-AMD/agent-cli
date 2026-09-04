@@ -136,6 +136,8 @@ export class DefaultModelClientSession implements ModelClientSession {
       cache_control?: { type: "ephemeral" };
     }> = [systemMessage as any];
 
+    const declaredToolCallIds = new Set<string>();
+
     for (let i = 0; i < params.history.length; i++) {
       const item = params.history[i]!;
 
@@ -173,6 +175,9 @@ export class DefaultModelClientSession implements ModelClientSession {
         }
 
         if (toolCalls.length > 0) {
+          for (const tc of toolCalls) {
+            declaredToolCallIds.add(tc.id);
+          }
           messages.push({
             role: "assistant",
             content: cleanedContent || null,
@@ -216,6 +221,9 @@ export class DefaultModelClientSession implements ModelClientSession {
           j++;
         }
 
+        for (const tc of toolCalls) {
+          declaredToolCallIds.add(tc.id);
+        }
         messages.push({
           role: "assistant",
           content: null,
@@ -223,11 +231,14 @@ export class DefaultModelClientSession implements ModelClientSession {
         });
         i = j - 1;
       } else if (item.type === "function_call_output") {
-        messages.push({
-          role: "tool",
-          tool_call_id: item.callId,
-          content: item.output,
-        });
+        // Protect against HTTP 400 Bad Request: only emit tool role messages if the callId was declared
+        if (declaredToolCallIds.has(item.callId)) {
+          messages.push({
+            role: "tool",
+            tool_call_id: item.callId,
+            content: item.output,
+          });
+        }
       }
     }
 

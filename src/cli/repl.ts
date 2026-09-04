@@ -23,6 +23,7 @@ import { promptToolApproval, promptUserQuestion } from "./ui/prompt";
 import { MarkdownHighlighter } from "./ui/markdown";
 import { checkForUpdates } from "./update-checker";
 import { CredentialsStore } from "../auth/store";
+import { globalPrefixRulesStore } from "../storage/prefix-rules-store";
 import type { Session } from "../session/session";
 import type { AgentSpawner } from "../agents/spawner";
 import type { McpManager } from "../mcp/manager";
@@ -271,14 +272,22 @@ export class CliRepl {
     toolName: string;
     description: string;
     command?: string;
+    prefixRule?: string[];
   }): Promise<void> {
     try {
       const decision = await promptToolApproval(msg);
 
       if (decision === "always") {
-        this.session.execPolicy.addRule(/.*/, "allow", "User allowed all actions for this session");
-        this.session.resolveApproval(msg.approvalId, true);
-        this.spinner.start(`Executing approved action (auto-approved for session)...`, this.turnStartTime);
+        if (msg.prefixRule && Array.isArray(msg.prefixRule) && msg.prefixRule.length > 0) {
+          globalPrefixRulesStore.addRule(this.session.cwd, msg.prefixRule);
+          this.session.resolveApproval(msg.approvalId, { allowed: true, rememberPrefix: true });
+          this.spinner.start(`Executing approved action (saved prefix rule)...`, this.turnStartTime);
+        } else {
+          // Allow standard commands for this session (invariant deny rules remain strictly enforced)
+          this.session.execPolicy.addRule(/.*/, "allow", "User allowed all standard actions for this session");
+          this.session.resolveApproval(msg.approvalId, true);
+          this.spinner.start(`Executing approved action (auto-approved for session)...`, this.turnStartTime);
+        }
       } else if (decision === "yes") {
         this.session.resolveApproval(msg.approvalId, true);
         this.spinner.start(`Executing approved action...`, this.turnStartTime);

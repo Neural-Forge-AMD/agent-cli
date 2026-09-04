@@ -1,10 +1,11 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   readFileTool,
   viewFileTool,
+  listDirTool,
   createDefaultTools,
   DEFAULT_MAX_UNPAGINATED_LINES,
 } from "../src";
@@ -133,5 +134,32 @@ describe("Surgical Precision Tools (Context Window Efficiency)", () => {
     );
     expect(findRes.isError).toBeFalsy();
     expect(findRes.output).toContain("test-view.ts");
+  });
+
+  test("list_dir truncates output when directory contains more than 500 entries", async () => {
+    const largeDir = join(testDir, "large_dir");
+    mkdirSync(largeDir);
+    for (let i = 0; i < 520; i++) {
+      writeFileSync(join(largeDir, `item_${i}.txt`), "content");
+    }
+
+    const res = await listDirTool.execute({ path: "large_dir" }, { cwd: testDir, turnId: "t1" });
+    expect(res.isError).toBeFalsy();
+    expect(res.output).toContain("[Truncated: 20 more entries. Showing first 500 of 520]");
+  });
+
+  test("list_dir handles broken symlinks gracefully without throwing", async () => {
+    const symlinkDir = join(testDir, "symlink_dir");
+    mkdirSync(symlinkDir);
+    try {
+      symlinkSync(join(symlinkDir, "non-existent-target.txt"), join(symlinkDir, "broken-link.txt"));
+    } catch {
+      // If OS / Windows permissions restrict creating symlinks without admin, skip gracefully
+      return;
+    }
+
+    const res = await listDirTool.execute({ path: "symlink_dir" }, { cwd: testDir, turnId: "t1" });
+    expect(res.isError).toBeFalsy();
+    expect(res.output).toContain("broken-link.txt");
   });
 });

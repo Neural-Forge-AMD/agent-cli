@@ -71,7 +71,7 @@ export class Session {
   private activeTurn: TurnContext | null = null;
   private status: SessionStatus = "idle";
   private eventListeners: Array<(event: Event) => void> = [];
-  private pendingApprovals = new Map<string, (approved: boolean) => void>();
+  private pendingApprovals = new Map<string, (approved: boolean | { allowed: boolean; rememberPrefix?: boolean }) => void>();
   private pendingUserQuestions = new Map<string, (answer: string) => void>();
 
   // Async queue for submissions
@@ -194,7 +194,8 @@ export class Session {
     toolName: string;
     description: string;
     command?: string;
-  }): Promise<boolean> {
+    prefixRule?: string[];
+  }): Promise<boolean | { allowed: boolean; rememberPrefix?: boolean }> {
     this.emitEvent({
       type: "ApprovalRequired",
       approvalId: params.approvalId,
@@ -202,13 +203,14 @@ export class Session {
       toolName: params.toolName,
       description: params.description,
       command: params.command,
+      prefixRule: params.prefixRule,
     });
     this.emitEvent({
       type: "StatusChanged",
       status: "waiting_approval",
     });
 
-    return new Promise<boolean>((resolve) => {
+    return new Promise((resolve) => {
       this.pendingApprovals.set(params.approvalId, (approved) => {
         this.emitEvent({
           type: "StatusChanged",
@@ -219,7 +221,7 @@ export class Session {
     });
   }
 
-  resolveApproval(approvalId: string, approved: boolean): void {
+  resolveApproval(approvalId: string, approved: boolean | { allowed: boolean; rememberPrefix?: boolean }): void {
     const resolver = this.pendingApprovals.get(approvalId);
     if (resolver) {
       this.pendingApprovals.delete(approvalId);

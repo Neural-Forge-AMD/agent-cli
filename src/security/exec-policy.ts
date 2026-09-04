@@ -20,6 +20,7 @@ export interface ExecRule {
 }
 
 export class ExecPolicy {
+  private denyRules: ExecRule[] = [];
   private rules: ExecRule[] = [];
   private mode: PermissionMode = "auto";
 
@@ -40,10 +41,10 @@ export class ExecPolicy {
    * Initializes standard safe, prompted, and denied command rules.
    */
   private initDefaultRules(): void {
-    // 1. Strictly Denied Commands (System Destruction & Raw Disk Writing)
-    this.addRule(/^(mkfs|format|fdisk|parted)\b/i, "deny", "Destructive filesystem formatting operation");
-    this.addRule(/^dd\s+.*(of=\/dev\/|\/dev\/sd|\/dev\/nvme)/i, "deny", "Raw block device write attempt");
-    this.addRule(/^(reboot|shutdown|poweroff|init\s+0)\b/i, "deny", "System power manipulation");
+    // 1. Strictly Denied Commands (System Destruction & Raw Disk Writing) - Absolute Invariant
+    this.addDenyRule(/(?:^|[/\\])(mkfs|format|fdisk|parted)\b/i, "Destructive filesystem formatting operation");
+    this.addDenyRule(/^dd\s+.*(of=\/dev\/|\/dev\/sd|\/dev\/nvme)/i, "Raw block device write attempt");
+    this.addDenyRule(/(?:^|[/\\])(reboot|shutdown|poweroff|init\s+0)\b/i, "System power manipulation");
 
     // 2. Potentially Dangerous / Destructive -> Prompt User
     this.addRule(/^(sudo|su|doas|runas)\b/i, "prompt", "Privilege escalation attempt");
@@ -60,6 +61,10 @@ export class ExecPolicy {
     this.addRule(/^(git\s+(status|log|diff|branch|show|rev-parse|tag|remote|describe))\b/i, "allow", "Safe git query");
     this.addRule(/^(ls|dir|cat|type|grep|rg|find|pwd|echo|head|tail|wc|which|where|stat|file|du|df)\b/i, "allow", "Safe read-only shell command");
     this.addRule(/^(bun\s+(test|run|--version|-v)|npm\s+(test|run|--version|-v)|npx\s+(tsc|eslint|oxlint)|tsc|cargo\s+(check|test|build)|go\s+(test|vet|build)|pytest|python\s+-m\s+unittest|node\s+(-v|--version|--test))\b/i, "allow", "Testing, typechecking & build verification");
+  }
+
+  addDenyRule(pattern: RegExp, description?: string): void {
+    this.denyRules.push({ pattern, decision: "deny", description });
   }
 
   addRule(pattern: RegExp, decision: ExecDecision, description?: string): void {
@@ -138,6 +143,16 @@ export class ExecPolicy {
 
   private evaluateSingle(command: string): { decision: ExecDecision; reason?: string } {
     const trimmed = command.trim();
+
+    // 0. Absolute Deny Rules ALWAYS take precedence across all permission modes and session rules
+    for (const rule of this.denyRules) {
+      if (rule.pattern.test(trimmed)) {
+        return {
+          decision: "deny",
+          reason: rule.description,
+        };
+      }
+    }
 
     if (this.mode === "plan") {
       // In plan mode, allow read-only inspection; require prompt gate for mutating commands

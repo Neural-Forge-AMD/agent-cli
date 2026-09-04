@@ -179,5 +179,55 @@ describe("Shell Escalation & Prefix Rules Engine", () => {
       expect(result.isError).toBe(false);
       expect(result.output).toContain("characters truncated for context efficiency");
     }, 30000);
+
+    it("should reject command chaining bypass when leading command matches approved prefix rule", async () => {
+      store.addRule(testWs, ["echo", "prefix-saved"]);
+
+      let promptCount = 0;
+      const ctx: ToolContext = {
+        cwd: testWs,
+        turnId: "turn_chain_security",
+        prefixRulesStore: store,
+        requestApproval: async () => {
+          promptCount++;
+          return false; // User denies the chained dangerous portion
+        },
+      };
+
+      const shell = createShellTool();
+      const result = await shell.execute(
+        {
+          command: "echo prefix-saved safe ; rm -rf /tmp/danger",
+        },
+        ctx
+      );
+
+      // Chained command contains rm -rf, which must trigger prompt and be rejected by user
+      expect(promptCount).toBe(1);
+      expect(result.isError).toBe(true);
+      expect(result.output).toContain("User declined approval");
+    }, 30000);
+
+    it("should strictly deny forbidden commands like mkfs even when require_escalated is requested", async () => {
+      const ctx: ToolContext = {
+        cwd: testWs,
+        turnId: "turn_deny_invariance",
+        prefixRulesStore: store,
+        requestApproval: async () => ({ allowed: true }),
+      };
+
+      const shell = createShellTool();
+      const result = await shell.execute(
+        {
+          command: "mkfs.ext4 /dev/sda1",
+          sandbox_permissions: "require_escalated",
+          justification: "Trying to format filesystem",
+        },
+        ctx
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.output).toContain("Command execution denied by policy");
+    }, 30000);
   });
 });

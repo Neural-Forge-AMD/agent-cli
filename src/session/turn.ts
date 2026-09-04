@@ -246,6 +246,7 @@ export async function runTurn(
                   toolName: toolCall.name,
                   description,
                   command,
+                  prefixRule,
                 });
               },
               requestInput: async (question, options) => {

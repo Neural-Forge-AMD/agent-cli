@@ -7,6 +7,7 @@
 
 import type { Tool, ToolContext, ToolExecutionResult } from "../types";
 import { ExecPolicy } from "../../security/exec-policy";
+import { parseShellCommand } from "../../security/shell-parser";
 import { globalKernelSandbox } from "../../security/kernel/manager";
 import { globalPrefixRulesStore } from "../../storage/prefix-rules-store";
 import { globalEphemeralWorkspace } from "../../workspace/ephemeral";
@@ -64,14 +65,40 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
 
       const args = rawArgs as unknown as ShellToolArgs;
       const rulesStore = ctx.prefixRulesStore || globalPrefixRulesStore;
-      const cmdTokens = command.split(/\s+/).filter(Boolean);
+      const activePolicy = ctx.execPolicy || policy;
+
+      // 1. Invariant: Strictly denied commands can NEVER execute, even if escalated
+      const policyDecision = activePolicy.evaluate(command);
+      if (policyDecision.decision === "deny") {
+        return {
+          output: `Error: Command execution denied by policy: ${policyDecision.reason}`,
+          isError: true,
+        };
+      }
+
+      // 2. Check if command matches approved prefix rule
+      const parsed = parseShellCommand(command);
+      const isCompound = parsed.commands.length > 1 || parsed.subshellCommands.length > 0 || parsed.hasPipes;
       let isEscalated = false;
 
-      // 1. Check if command matches an already approved prefix rule
-      if (rulesStore.isApproved(ctx.cwd, cmdTokens)) {
-        isEscalated = true;
-      } else if (args.sandbox_permissions === "require_escalated") {
-        // 2. Handle explicit escalation request
+      if (!isCompound) {
+        const cmdTokens = command.split(/\s+/).filter(Boolean);
+        if (rulesStore.isApproved(ctx.cwd, cmdTokens)) {
+          isEscalated = true;
+        }
+      } else {
+        // Compound commands can only be auto-escalated if EVERY chained sub-command is approved
+        const allSubCommands = [...parsed.commands, ...parsed.subshellCommands];
+        if (
+          allSubCommands.length > 0 &&
+          allSubCommands.every((sub) => rulesStore.isApproved(ctx.cwd, sub.split(/\s+/).filter(Boolean)))
+        ) {
+          isEscalated = true;
+        }
+      }
+
+      // 3. Handle explicit escalation request
+      if (!isEscalated && args.sandbox_permissions === "require_escalated") {
         if (ctx.requestApproval) {
           const promptDesc = args.justification || "Executing command with escalated permissions";
           const approvalResult = await ctx.requestApproval(
@@ -98,19 +125,9 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
         }
       }
 
-      // 3. If not escalated, evaluate standard ExecPolicy
-      if (!isEscalated) {
-        const activePolicy = ctx.execPolicy || policy;
-        const policyDecision = activePolicy.evaluate(command);
-
-        if (policyDecision.decision === "deny") {
-          return {
-            output: `Error: Command execution denied by policy: ${policyDecision.reason}`,
-            isError: true,
-          };
-        }
-
-        if (policyDecision.decision === "prompt" && ctx.requestApproval) {
+      // 4. If policy requires prompt and not already escalated, request user confirmation
+      if (policyDecision.decision === "prompt" && !isEscalated) {
+        if (ctx.requestApproval) {
           const approvalResult = await ctx.requestApproval(
             policyDecision.reason || "Executing external command",
             command
@@ -123,6 +140,11 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
               isError: true,
             };
           }
+        } else {
+          return {
+            output: `Error: Command execution requires user confirmation: '${command}' (${policyDecision.reason || "Requires approval"})`,
+            isError: true,
+          };
         }
       }
 

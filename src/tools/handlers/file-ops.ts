@@ -3,7 +3,7 @@
  * read_file, write_file, list_dir.
  */
 
-import { readdirSync, readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, existsSync, statSync, lstatSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import type { Tool, ToolContext, ToolExecutionResult } from "../types";
 
@@ -132,6 +132,8 @@ export const viewFileTool: Tool = {
     "View file content with surgical line-range support. Alias for read_file matching Antigravity & Claude Code conventions.",
 };
 
+export const DEFAULT_MAX_DIR_ENTRIES = 500;
+
 export const listDirTool: Tool = {
   name: "list_dir",
   description: "List contents of a directory with file names and types.",
@@ -148,12 +150,29 @@ export const listDirTool: Tool = {
     }
     try {
       const entries = readdirSync(dirPath);
-      const formatted = entries.map((entry) => {
+      const totalEntries = entries.length;
+      const displayEntries = entries.slice(0, DEFAULT_MAX_DIR_ENTRIES);
+
+      const formatted = displayEntries.map((entry) => {
         const full = resolve(dirPath, entry);
-        const isDir = statSync(full).isDirectory();
+        let isDir = false;
+        try {
+          isDir = statSync(full).isDirectory();
+        } catch {
+          try {
+            const lst = lstatSync(full);
+            if (lst.isSymbolicLink()) return `[SYMLINK] ${entry}`;
+          } catch {}
+          return `[FILE] ${entry}`;
+        }
         return `${isDir ? "[DIR]" : "[FILE]"} ${entry}`;
       });
-      return { output: formatted.join("\n") || "[Empty directory]" };
+
+      let output = formatted.join("\n") || "[Empty directory]";
+      if (totalEntries > DEFAULT_MAX_DIR_ENTRIES) {
+        output += `\n\n... [Truncated: ${totalEntries - DEFAULT_MAX_DIR_ENTRIES} more entries. Showing first ${DEFAULT_MAX_DIR_ENTRIES} of ${totalEntries}]`;
+      }
+      return { output };
     } catch (err) {
       return { output: `Failed to list directory: ${err instanceof Error ? err.message : String(err)}`, isError: true };
     }

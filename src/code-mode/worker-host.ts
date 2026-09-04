@@ -64,6 +64,9 @@ export class SandboxedWorkerHost {
       const fetch = undefined;
       const XMLHttpRequest = undefined;
       const WebSocket = undefined;
+      const globalThis = Object.freeze(Object.create(null));
+      const global = undefined;
+      const window = undefined;
       
       return (async () => {
         ${cleanCode}
