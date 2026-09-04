@@ -77,6 +77,17 @@ describe("Autonomous Closed-Loop Verification & Self-Healing", () => {
     const abortedResult = await customVerifier.verify(["src/index.ts"], controller.signal);
     expect(abortedResult.success).toBe(false);
     expect(abortedResult.reason).toBe("ABORTED");
+
+    // 6. Timeout error message includes explicit timeout detail
+    const timeoutVerifier = new AutoVerifier({
+      cwd: testDir,
+      customCommand: "node -e \"setTimeout(() => {}, 5000)\"",
+      timeoutMs: 100,
+    });
+    const timeoutResult = await timeoutVerifier.verify(["src/index.ts"]);
+    expect(timeoutResult.success).toBe(false);
+    expect(timeoutResult.output).toContain("[Verification Timeout Error]");
+    expect(timeoutResult.output).toContain("exceeded timeout limit of 100ms");
   });
 
   test("Turn without file mutations does not trigger verification", async () => {

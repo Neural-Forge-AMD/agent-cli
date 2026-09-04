@@ -400,7 +400,9 @@ export class AutoVerifier {
 
       const timer = setTimeout(() => {
         killProcessTree();
-        finish(false, 1, `Verification command timed out after ${this.timeoutMs}ms: ${command}`);
+        const partial = (stdoutData + "\n" + stderrData).trim();
+        const timeoutMsg = `[Verification Timeout Error]: Verification command '${command}' exceeded timeout limit of ${this.timeoutMs}ms and was terminated.`;
+        finish(false, 1, partial ? `${partial}\n\n${timeoutMsg}` : timeoutMsg);
       }, this.timeoutMs);
 
       const cleanup = () => {
@@ -430,16 +432,27 @@ export class AutoVerifier {
         });
 
         proc.on("error", (err) => {
-          finish(false, 1, `Process spawn error: ${err.message}`);
+          const partial = (stdoutData + "\n" + stderrData).trim();
+          const spawnMsg = `[Verification Process Spawn Error]: Failed to spawn command '${command}': ${err.message}`;
+          finish(false, 1, partial ? `${partial}\n\n${spawnMsg}` : spawnMsg);
         });
 
         proc.on("close", (code) => {
           const exitCode = code ?? 0;
           const combined = (stdoutData + "\n" + stderrData).trim();
-          finish(exitCode === 0, exitCode, combined || (exitCode === 0 ? "Verification passed cleanly." : "Command exited with error."));
+          if (exitCode === 0) {
+            finish(true, 0, combined || "Verification passed cleanly.");
+          } else {
+            const errorFallback = `[Verification Failure]: Command '${command}' exited with code ${exitCode} and produced no output.`;
+            finish(
+              false,
+              exitCode,
+              combined ? `${combined}\n\n[Process exited with non-zero code ${exitCode}]` : errorFallback
+            );
+          }
         });
       } catch (err: any) {
-        finish(false, 1, `Verification execution exception: ${err.message || String(err)}`);
+        finish(false, 1, `[Verification Execution Exception]: ${err.message || String(err)}`);
       }
     });
   }

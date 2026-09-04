@@ -65,6 +65,18 @@ export class CodeModeToolsProxy {
               throw new Error(`Tool '${tool.name}' failed: ${result.output}`);
             }
 
+            if (
+              normalizedName === "write_file" ||
+              normalizedName === "apply_patch" ||
+              tool.name === "write_file" ||
+              tool.name === "apply_patch"
+            ) {
+              const pathArg = String(args?.path || "");
+              if (pathArg) {
+                this.context.onFileModified?.(pathArg);
+              }
+            }
+
             return result.output;
           };
         },

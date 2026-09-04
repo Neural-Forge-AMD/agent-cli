@@ -203,14 +203,21 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
 
         let rawOutput = outputParts.join("\n") || "[Command completed with no output]";
 
-        // Context Protection: truncate gigantic shell outputs (e.g. log dumps, unpaginated outputs)
-        if (rawOutput.length > 30000) {
-          const lines = rawOutput.split("\n");
-          if (lines.length > 100) {
-            const head = lines.slice(0, 50).join("\n");
-            const tail = lines.slice(-40).join("\n");
-            rawOutput = `${head}\n\n... [${lines.length - 90} lines truncated for context efficiency] ...\n\n${tail}`;
-          }
+        // Context Protection: Truncate gigantic shell outputs (both line-based and character-based)
+        const lines = rawOutput.split("\n");
+        const MAX_LINES = 250;
+        const MAX_CHARS = 30000;
+
+        if (lines.length > MAX_LINES) {
+          const headLines = lines.slice(0, 125).join("\n");
+          const tailLines = lines.slice(-100).join("\n");
+          rawOutput = `${headLines}\n\n... [${lines.length - 225} lines truncated for context efficiency] ...\n\n${tailLines}`;
+        }
+
+        if (rawOutput.length > MAX_CHARS) {
+          const headChars = rawOutput.slice(0, 16000);
+          const tailChars = rawOutput.slice(-12000);
+          rawOutput = `${headChars}\n\n... [${rawOutput.length - 28000} characters truncated for context efficiency] ...\n\n${tailChars}`;
         }
 
         if (sandboxNotice) {

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { join } from "path";
+import { writeFileSync, unlinkSync } from "fs";
 import { PrefixRulesStore } from "../src/storage/prefix-rules-store";
 import { createShellTool } from "../src/tools/handlers/shell";
 import { ExecPolicy } from "../src/security/exec-policy";
@@ -14,6 +16,8 @@ describe("Shell Escalation & Prefix Rules Engine", () => {
 
   afterEach(() => {
     store.close();
+    try { unlinkSync(join(testWs, "gen-lines.js")); } catch {}
+    try { unlinkSync(join(testWs, "gen-chars.js")); } catch {}
   });
 
   describe("PrefixRulesStore (SQLite)", () => {
@@ -128,6 +132,52 @@ describe("Shell Escalation & Prefix Rules Engine", () => {
 
       expect(result.isError).toBe(true);
       expect(result.output).toContain("User declined approval");
+    }, 30000);
+
+    it("should truncate output when exceeding 250 lines", async () => {
+      const scriptPath = join(testWs, "gen-lines.js");
+      writeFileSync(scriptPath, "for (let i = 1; i <= 300; i++) console.log('log line ' + i);");
+
+      const ctx: ToolContext = {
+        cwd: testWs,
+        turnId: "turn_trunc_lines",
+        prefixRulesStore: store,
+      };
+
+      const shell = createShellTool();
+      const result = await shell.execute(
+        {
+          command: "node gen-lines.js",
+        },
+        ctx
+      );
+
+      expect(result.isError).toBe(false);
+      expect(result.output).toContain("lines truncated for context efficiency");
+      expect(result.output).toContain("log line 1");
+      expect(result.output).toContain("log line 300");
+    }, 30000);
+
+    it("should truncate output when exceeding 30000 characters", async () => {
+      const scriptPath = join(testWs, "gen-chars.js");
+      writeFileSync(scriptPath, "process.stdout.write('A'.repeat(35000));");
+
+      const ctx: ToolContext = {
+        cwd: testWs,
+        turnId: "turn_trunc_chars",
+        prefixRulesStore: store,
+      };
+
+      const shell = createShellTool();
+      const result = await shell.execute(
+        {
+          command: "node gen-chars.js",
+        },
+        ctx
+      );
+
+      expect(result.isError).toBe(false);
+      expect(result.output).toContain("characters truncated for context efficiency");
     }, 30000);
   });
 });

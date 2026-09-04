@@ -133,4 +133,24 @@ describe("Code-Mode Batch Execution Sandbox", () => {
     expect(toolCall.isError).toBeFalsy();
     expect(toolCall.output).toContain("ESM Read: hello from esm");
   });
+
+  test("triggers onFileModified context callback when mutating files via code_mode", async () => {
+    const modified: string[] = [];
+    const toolCall = await router.execute(
+      "code_mode",
+      {
+        code: `
+          await tools.writeFile({ path: "tracked_file.txt", content: "tracked content" });
+        `,
+      },
+      {
+        cwd: testDir,
+        turnId: "turn_code_mode_6",
+        onFileModified: (p) => modified.push(p),
+      }
+    );
+
+    expect(toolCall.isError).toBeFalsy();
+    expect(modified).toContain("tracked_file.txt");
+  });
 });
