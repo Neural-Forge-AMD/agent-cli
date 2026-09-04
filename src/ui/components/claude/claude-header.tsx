@@ -62,7 +62,7 @@ export function ClaudeLogo({
 }
 
 export function ClaudeHeader({
-  version = "v0.3.2",
+  version = "v0.4.0",
   user = "Developer",
   model = "Claude 3.7 Sonnet (Thinking)",
   plan = "Pro",
