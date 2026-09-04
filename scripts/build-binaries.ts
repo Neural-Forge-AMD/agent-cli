@@ -174,10 +174,15 @@ async function buildAll() {
   const onlyArg = args.find((a) => a.startsWith("--only="));
   if (targetArg) {
     const val = targetArg.split("=")[1];
-    activeTargets = TARGETS.filter((t) => t.bunTarget === val || t.outputFile === val);
+    if (val) {
+      activeTargets = TARGETS.filter((t) => t.bunTarget === val || t.outputFile === val);
+    }
   } else if (onlyArg) {
     const val = onlyArg.split("=")[1];
-    activeTargets = TARGETS.filter((t) => t.packageName.includes(val) || t.name.toLowerCase().includes(val.toLowerCase()));
+    if (val) {
+      const query = val.toLowerCase();
+      activeTargets = TARGETS.filter((t) => t.packageName.includes(val) || t.name.toLowerCase().includes(query));
+    }
   }
 
   console.log("==================================================");

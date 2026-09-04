@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { TARGETS } from "../scripts/build-binaries";
+// @ts-expect-error bin/pikaa.js is a plain JavaScript launcher file without type definitions
 import { getPlatformPackageInfo } from "../bin/pikaa.js";
 
 const ROOT_DIR = join(import.meta.dir, "..");
