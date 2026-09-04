@@ -56,9 +56,19 @@ export class AutoVerifier {
       try {
         const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
         if (pkg.scripts) {
-          if (pkg.scripts.typecheck) return "npm run typecheck";
-          if (pkg.scripts.check) return "npm run check";
-          if (pkg.scripts.test) return "npm test";
+          const pm = existsSync(join(this.cwd, "bun.lockb")) || existsSync(join(this.cwd, "bun.lock"))
+            ? "bun"
+            : existsSync(join(this.cwd, "pnpm-lock.yaml"))
+            ? "pnpm"
+            : existsSync(join(this.cwd, "yarn.lock"))
+            ? "yarn"
+            : "npm";
+          const runCmd = pm === "bun" || pm === "pnpm" || pm === "yarn" ? `${pm} run` : "npm run";
+          const testCmd = pm === "bun" ? "bun test" : `${pm} test`;
+
+          if (pkg.scripts.typecheck) return `${runCmd} typecheck`;
+          if (pkg.scripts.check) return `${runCmd} check`;
+          if (pkg.scripts.test) return testCmd;
         }
       } catch {}
     }
@@ -126,6 +136,14 @@ export class AutoVerifier {
       const stdout = proc.stdout ? String(proc.stdout) : "";
       const stderr = proc.stderr ? String(proc.stderr) : "";
       let combined = (stdout + "\n" + stderr).trim();
+
+      if (proc.error) {
+        const isTimeout = (proc.error as any).code === "ETIMEDOUT";
+        const errMsg = isTimeout
+          ? `Verification command timed out after ${this.timeoutMs}ms: ${proc.error.message}`
+          : `Verification execution error: ${proc.error.message}`;
+        combined = combined ? `${combined}\n${errMsg}` : errMsg;
+      }
 
       // Truncate gigantic compiler outputs to prevent token bloat
       if (combined.length > 3000) {

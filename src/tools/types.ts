@@ -30,6 +30,7 @@ export interface ToolContext {
   permissionMode?: PermissionMode;
   prefixRulesStore?: PrefixRulesStore;
   onPlanUpdate?: (plan: PlanItem[], explanation?: string) => void;
+  onFileModified?: (path: string) => void;
   requestApproval?: (description: string, command?: string, prefixRule?: string[]) => Promise<{ allowed: boolean; rememberPrefix?: boolean } | boolean>;
   requestInput?: (question: string, options?: string[]) => Promise<string>;
 }

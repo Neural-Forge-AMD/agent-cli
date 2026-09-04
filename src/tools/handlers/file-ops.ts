@@ -201,6 +201,7 @@ export const writeFileTool: Tool = {
     try {
       mkdirSync(dirname(filePath), { recursive: true });
       writeFileSync(filePath, String(args.content ?? ""), "utf8");
+      ctx.onFileModified?.(rawPath);
       return { output: `Successfully wrote to '${args.path}'` };
     } catch (err) {
       return {

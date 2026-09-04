@@ -85,6 +85,7 @@ export const applyPatchTool: Tool = {
       try {
         mkdirSync(dirname(filePath), { recursive: true });
         writeFileSync(filePath, replacementContent, "utf8");
+        ctx.onFileModified?.(rawPath);
         return { output: `Successfully created new file '${rawPath}'` };
       } catch (err) {
         return {
@@ -109,8 +110,30 @@ export const applyPatchTool: Tool = {
         };
       }
 
-      // Check occurrences
-      const firstIndex = originalFileContent.indexOf(targetContent);
+      // Check occurrences with line-ending tolerance (handles Windows CRLF vs Unix LF seamlessly)
+      let targetToFind = targetContent;
+      let replacementToUse = replacementContent;
+      const fileHasCrlf = originalFileContent.includes("\r\n");
+
+      let firstIndex = originalFileContent.indexOf(targetToFind);
+      if (firstIndex === -1 && fileHasCrlf) {
+        // Try converting LF target to CRLF to match the file
+        const crlfTarget = targetContent.replace(/\r?\n/g, "\r\n");
+        firstIndex = originalFileContent.indexOf(crlfTarget);
+        if (firstIndex !== -1) {
+          targetToFind = crlfTarget;
+          replacementToUse = replacementContent.replace(/\r?\n/g, "\r\n");
+        }
+      } else if (firstIndex === -1 && !fileHasCrlf && targetContent.includes("\r\n")) {
+        // Try converting CRLF target to LF to match the file
+        const lfTarget = targetContent.replace(/\r\n/g, "\n");
+        firstIndex = originalFileContent.indexOf(lfTarget);
+        if (firstIndex !== -1) {
+          targetToFind = lfTarget;
+          replacementToUse = replacementContent.replace(/\r\n/g, "\n");
+        }
+      }
+
       if (firstIndex === -1) {
         return {
           output: `Error: targetContent was not found in '${rawPath}'.
@@ -122,7 +145,7 @@ export const applyPatchTool: Tool = {
         };
       }
 
-      const secondIndex = originalFileContent.indexOf(targetContent, firstIndex + 1);
+      const secondIndex = originalFileContent.indexOf(targetToFind, firstIndex + 1);
       if (secondIndex !== -1) {
         return {
           output: `Error: targetContent matched multiple locations in '${rawPath}'.
@@ -137,10 +160,11 @@ export const applyPatchTool: Tool = {
       // Perform single unique replacement
       const newFileContent =
         originalFileContent.slice(0, firstIndex) +
-        replacementContent +
-        originalFileContent.slice(firstIndex + targetContent.length);
+        replacementToUse +
+        originalFileContent.slice(firstIndex + targetToFind.length);
 
       writeFileSync(filePath, newFileContent, "utf8");
+      ctx.onFileModified?.(rawPath);
       return {
         output: `Successfully applied patch to '${rawPath}'`,
       };

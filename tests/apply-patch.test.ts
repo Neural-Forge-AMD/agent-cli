@@ -7,9 +7,10 @@ const testDir = resolve(import.meta.dir, "temp_patch_test");
 
 afterEach(() => {
   try {
-    const testFile = resolve(testDir, "test.txt");
-    if (existsSync(testFile)) unlinkSync(testFile);
-    if (existsSync(testDir)) rmdirSync(testDir);
+    const { rmSync } = require("node:fs");
+    if (existsSync(testDir)) {
+      rmSync(testDir, { recursive: true, force: true });
+    }
   } catch {}
 });
 
@@ -79,5 +80,32 @@ describe("apply_patch Tool Handler", () => {
 
     expect(result.isError).toBe(true);
     expect(result.output).toContain("targetContent was not found");
+  });
+
+  test("seamlessly matches and patches files with Windows CRLF line endings using LF targetContent", async () => {
+    const filePath = "temp_patch_test/test_crlf.txt";
+    // Setup file with explicit Windows CRLF line endings
+    const fullPath = resolve(import.meta.dir, filePath);
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { dirname } = await import("node:path");
+    mkdirSync(dirname(fullPath), { recursive: true });
+    writeFileSync(fullPath, "function test() {\r\n  const x = 1;\r\n  return x;\r\n}\r\n", "utf8");
+
+    // Apply patch where LLM provided Unix LF (\n)
+    const patchResult = await applyPatchTool.execute(
+      {
+        path: filePath,
+        targetContent: "  const x = 1;\n  return x;",
+        replacementContent: "  const x = 100;\n  return x * 2;",
+      },
+      { cwd: import.meta.dir, turnId: "test_turn" }
+    );
+
+    expect(patchResult.isError).toBeFalsy();
+    expect(patchResult.output).toContain("Successfully applied patch");
+
+    // Must preserve Windows CRLF line endings on disk
+    const updated = readFileSync(fullPath, "utf8");
+    expect(updated).toBe("function test() {\r\n  const x = 100;\r\n  return x * 2;\r\n}\r\n");
   });
 });

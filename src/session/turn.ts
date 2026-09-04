@@ -168,6 +168,16 @@ export async function runTurn(
 
       // If one or more tool calls were requested, execute them and continue the loop
       if (toolCallRequests.length > 0) {
+        const validCalls: Array<{
+          callId: string;
+          name: string;
+          arguments: Record<string, unknown>;
+          functionCallItem: FunctionCallItem;
+        }> = [];
+
+        // 1. Stage and append all function_call items to conversation history first.
+        // This preserves strict OpenAI/Anthropic parallel tool call schema compliance,
+        // allowing model-client to reconstruct a single assistant message containing all tool_calls.
         for (const toolCall of toolCallRequests) {
           if (!toolCall.name || !toolCall.name.trim()) continue;
 
@@ -193,6 +203,16 @@ export async function runTurn(
             arguments: toolCall.arguments,
           });
 
+          validCalls.push({
+            callId: toolCall.callId,
+            name: toolCall.name,
+            arguments: toolCall.arguments,
+            functionCallItem,
+          });
+        }
+
+        // 2. Execute tools and append their outputs
+        for (const toolCall of validCalls) {
           // Execute tool through ToolRouter
           const toolResult = await turnContext.tools.execute(
             toolCall.name,
@@ -204,6 +224,12 @@ export async function runTurn(
               execPolicy: session.execPolicy,
               mode: session.collaborationMode,
               permissionMode: session.permissionMode,
+              onFileModified: (p) => {
+                if (p) {
+                  modifiedFiles.add(p);
+                  hasRunVerification = false;
+                }
+              },
               onPlanUpdate: (plan, explanation) => {
                 session.emitEvent({
                   type: "PlanUpdated",
