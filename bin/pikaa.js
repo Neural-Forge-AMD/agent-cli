@@ -153,10 +153,13 @@ function launchBinary(binPath) {
 
 function tryLaunchWithBun() {
   const jsEntry = join(rootDir, "dist", "cli.js");
-  if (existsSync(jsEntry)) {
+  const tsEntry = join(rootDir, "src", "cli", "index.ts");
+  const targetEntry = existsSync(jsEntry) ? jsEntry : (existsSync(tsEntry) ? tsEntry : null);
+
+  if (targetEntry) {
     const probe = spawnSync("bun", ["--version"], { encoding: "utf8" });
     if (!probe.error) {
-      const r = spawnSync("bun", ["run", jsEntry, ...process.argv.slice(2)], {
+      const r = spawnSync("bun", ["run", targetEntry, ...process.argv.slice(2)], {
         stdio: "inherit",
         env: process.env,
       });

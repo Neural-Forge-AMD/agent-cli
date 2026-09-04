@@ -38,11 +38,11 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Build JavaScript Bundle
+        run: bun run build:js
+
       - name: Run Test Suites
         run: bun test --timeout 30000
-
-      - name: Verify JavaScript Bundle Build
-        run: bun run build:js
 
       - name: Verify Native Standalone Compilation
         run: bun run build:exe
