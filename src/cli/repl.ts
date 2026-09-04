@@ -183,6 +183,27 @@ export class CliRepl {
           this.spinner.start("Executing next step...", this.turnStartTime);
           break;
 
+        case "VerificationStarted":
+          this.spinner.stop();
+          console.log(style.cyan(`\n  🔍 Auto-Verification: Running '${msg.command}'...`));
+          this.spinner.start(`Verifying changes with ${msg.command}...`, this.turnStartTime);
+          break;
+
+        case "VerificationCompleted":
+          this.spinner.stop();
+          if (msg.success) {
+            console.log(style.green(`  ✓ Auto-Verification passed: ${msg.command} (${msg.durationMs ?? 0}ms)`));
+          } else {
+            console.log(style.red(`  ✗ Auto-Verification failed: ${msg.command} (${msg.durationMs ?? 0}ms)`));
+          }
+          break;
+
+        case "SelfHealingStarted":
+          this.spinner.stop();
+          console.log(style.yellow(`  🩹 Self-Healing Loop triggered (Attempt ${msg.attempt}/${msg.maxAttempts}): Auto-fixing detected errors...`));
+          this.spinner.start(`Self-healing [${msg.attempt}/${msg.maxAttempts}]...`, this.turnStartTime);
+          break;
+
         case "TurnCompleted":
           if (this.reasoningStarted) {
             console.log(style.dim("\n  └─────────────────────────────────────────────────────────\n"));

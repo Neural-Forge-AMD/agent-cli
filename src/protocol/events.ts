@@ -90,6 +90,28 @@ export type EventMsg =
       isError?: boolean;
     }
   | {
+      type: "VerificationStarted";
+      turnId: string;
+      command: string;
+      modifiedFiles: string[];
+    }
+  | {
+      type: "VerificationCompleted";
+      turnId: string;
+      command: string;
+      success: boolean;
+      output?: string;
+      durationMs?: number;
+    }
+  | {
+      type: "SelfHealingStarted";
+      turnId: string;
+      attempt: number;
+      maxAttempts: number;
+      command: string;
+      error: string;
+    }
+  | {
       type: "Warning";
       message: string;
     }

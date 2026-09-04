@@ -32,6 +32,9 @@ export interface SessionOptions {
   mcpManager?: McpManager;
   execPolicy?: ExecPolicy;
   collaborationMode?: "default" | "plan" | "review";
+  autoVerification?: boolean;
+  autoVerificationCommand?: string;
+  maxSelfHealingAttempts?: number;
   onEvent?: (event: Event) => void;
 }
 
@@ -47,6 +50,9 @@ export class Session {
   public readonly mcpManager?: McpManager;
   public readonly execPolicy: ExecPolicy;
   public collaborationMode: "default" | "plan" | "review" = "default";
+  public autoVerification: boolean;
+  public autoVerificationCommand?: string;
+  public maxSelfHealingAttempts: number;
 
   public get permissionMode(): "auto" | "manual" | "accept-edits" | "plan" {
     return this.execPolicy.getMode();
@@ -85,6 +91,9 @@ export class Session {
     this.mcpManager = options.mcpManager;
     this.execPolicy = options.execPolicy || new ExecPolicy();
     this.collaborationMode = options.collaborationMode || "default";
+    this.autoVerification = options.autoVerification ?? (process.env.PIKAA_AUTO_VERIFY !== "0" && process.env.PIKAA_AUTO_VERIFY !== "false");
+    this.autoVerificationCommand = options.autoVerificationCommand;
+    this.maxSelfHealingAttempts = options.maxSelfHealingAttempts ?? 3;
     this.history = options.initialHistory ? [...options.initialHistory] : [];
 
     if (options.onEvent) {

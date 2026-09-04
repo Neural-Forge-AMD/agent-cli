@@ -19,6 +19,7 @@ import {
 import { captureWorldState, formatWorldStatePrompt } from "../context/world-state";
 import { buildSystemPrompt } from "../context/instructions";
 import { globalEphemeralWorkspace } from "../workspace/ephemeral";
+import { AutoVerifier } from "../verification";
 
 export async function runTurn(
   session: Session,
@@ -82,6 +83,9 @@ export async function runTurn(
   let accumulatedOutputTokens = 0;
   let accumulatedCachedTokens = 0;
   const clientSession = session.modelClient.newSession();
+  const modifiedFiles = new Set<string>();
+  let selfHealingAttempts = 0;
+  let hasRunVerification = false;
 
   try {
     while (iteration < turnContext.maxIterations) {
@@ -239,6 +243,16 @@ export async function runTurn(
             createdAt: Date.now(),
           };
 
+          if (!toolResult.isError) {
+            if (toolCall.name === "apply_patch" || toolCall.name === "write_file") {
+              const p = String(toolCall.arguments?.path || "");
+              if (p) {
+                modifiedFiles.add(p);
+                hasRunVerification = false;
+              }
+            }
+          }
+
           session.addHistoryItem(functionOutputItem);
           session.emitEvent({
             type: "ToolCallFinished" as any,
@@ -256,6 +270,85 @@ export async function runTurn(
 
         // Loop continues for model follow-up
         continue;
+      }
+
+      // If no tool calls were made, check if files were modified and require autonomous verification
+      if (
+        session.autoVerification &&
+        modifiedFiles.size > 0 &&
+        !hasRunVerification &&
+        iteration < turnContext.maxIterations
+      ) {
+        const verifier = new AutoVerifier({
+          cwd,
+          customCommand: session.autoVerificationCommand,
+        });
+        const command = verifier.resolveVerificationCommand();
+
+        if (command) {
+          session.emitEvent({
+            type: "VerificationStarted",
+            turnId,
+            command,
+            modifiedFiles: Array.from(modifiedFiles),
+          });
+
+          const vResult = verifier.verify(Array.from(modifiedFiles));
+
+          session.emitEvent({
+            type: "VerificationCompleted",
+            turnId,
+            command: vResult.command,
+            success: vResult.success,
+            output: vResult.output,
+            durationMs: vResult.durationMs,
+          });
+
+          if (!vResult.success) {
+            if (selfHealingAttempts < session.maxSelfHealingAttempts) {
+              selfHealingAttempts++;
+              session.emitEvent({
+                type: "SelfHealingStarted",
+                turnId,
+                attempt: selfHealingAttempts,
+                maxAttempts: session.maxSelfHealingAttempts,
+                command: vResult.command,
+                error: vResult.output,
+              });
+
+              // Inject high-signal self-verification failure into context to trigger self-healing
+              const feedbackMsg = `[Automated Self-Verification Failure]
+Verification command '${vResult.command}' failed with exit code ${vResult.exitCode}.
+
+Error trace / compiler output:
+${vResult.output}
+
+Modified file(s) in this turn: ${Array.from(modifiedFiles).join(", ")}
+
+Self-Healing Directive (Attempt ${selfHealingAttempts} of ${session.maxSelfHealingAttempts}):
+1. Review the error trace above carefully and locate the exact root cause.
+2. Formulate and apply the necessary surgical fix using 'apply_patch' or 'write_file'.
+3. Do NOT conclude the turn or report to the user until this error is resolved and verification passes cleanly.`;
+
+              session.addHistoryItem({
+                id: `msg_heal_${Date.now()}`,
+                type: "user_message",
+                content: feedbackMsg,
+                createdAt: Date.now(),
+              });
+
+              continue;
+            } else {
+              session.emitEvent({
+                type: "Warning",
+                message: `Auto-verification failed after ${selfHealingAttempts} self-healing attempts for command: ${vResult.command}`,
+              });
+              hasRunVerification = true;
+            }
+          } else {
+            hasRunVerification = true;
+          }
+        }
       }
 
       // If no tool calls were made, check if the response was completely empty
