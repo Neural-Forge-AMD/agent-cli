@@ -45,7 +45,7 @@ export class KernelSandboxManager {
   /**
    * Builds a default workspace-write sandbox profile for a given working directory.
    */
-  buildDefaultProfile(cwd: string, allowNetwork: boolean = true): SandboxProfile {
+  buildDefaultProfile(cwd: string, allowNetwork: boolean = false): SandboxProfile {
     const normCwd = normalize(resolve(cwd));
     return {
       kind: "workspace-write",
@@ -64,11 +64,17 @@ export class KernelSandboxManager {
   /**
    * Prepares command line arguments wrapped with OS sandbox flags if supported.
    */
-  wrapCommand(cmd: string[], profile: SandboxProfile): string[] {
+  wrapCommand(cmd: string[], profile: SandboxProfile, onWarning?: (msg: string) => void): string[] {
     if (process.platform === "linux") {
-      return this.linuxSandbox.wrapCommand(cmd, profile);
+      return this.linuxSandbox.wrapCommand(cmd, profile, onWarning);
     } else if (process.platform === "darwin") {
-      return this.macOsSandbox.wrapCommand(cmd, profile);
+      return this.macOsSandbox.wrapCommand(cmd, profile, onWarning);
+    } else if (process.platform === "win32") {
+      if (!this.windowsSandbox.isSupported() && profile.kind !== "danger-unrestricted") {
+        onWarning?.(
+          "Windows JobObject isolation is not available in this environment. Command will execute without OS-level process limits."
+        );
+      }
     }
     return cmd;
   }

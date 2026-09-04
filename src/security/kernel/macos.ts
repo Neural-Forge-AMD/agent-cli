@@ -48,14 +48,29 @@ export class MacOSSandbox {
       rules.push("(deny network*)");
     }
 
+    // Data Exfiltration Defense: explicitly deny reading sensitive credentials
+    const home = process.env.HOME || "/Users/Shared";
+    rules.push(`(deny file-read* (subpath "${home}/.ssh"))`);
+    rules.push(`(deny file-read* (subpath "${home}/.aws"))`);
+    rules.push(`(deny file-read* (subpath "${home}/.gnupg"))`);
+    rules.push(`(deny file-read* (subpath "${home}/.kube"))`);
+    rules.push(`(deny file-read* (subpath "${home}/.docker"))`);
+
     return rules.join("\n");
   }
 
   /**
    * Wraps a command array with sandbox-exec flags.
    */
-  wrapCommand(cmd: string[], profile: SandboxProfile): string[] {
-    if (!this.hasSandboxExec || profile.kind === "danger-unrestricted") {
+  wrapCommand(cmd: string[], profile: SandboxProfile, onWarning?: (msg: string) => void): string[] {
+    if (profile.kind === "danger-unrestricted") {
+      return cmd;
+    }
+
+    if (!this.hasSandboxExec) {
+      onWarning?.(
+        "macOS Seatbelt (sandbox-exec) is not available. Command will execute without OS-level namespace isolation."
+      );
       return cmd;
     }
 

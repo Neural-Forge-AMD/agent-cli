@@ -12,14 +12,17 @@ describe("Kernel Sandboxing & Platform Isolation", () => {
     expect(typeof capabilities.isSandboxingActive).toBe("boolean");
   });
 
-  test("KernelSandboxManager builds default workspace-write profile", () => {
+  test("KernelSandboxManager builds default workspace-write profile with zero-trust network", () => {
     const manager = new KernelSandboxManager();
     const profile = manager.buildDefaultProfile(process.cwd());
 
     expect(profile.kind).toBe("workspace-write");
     expect(profile.writableRoots.length).toBeGreaterThanOrEqual(1);
-    expect(profile.allowNetwork).toBe(true);
+    expect(profile.allowNetwork).toBe(false); // Secure default
     expect(profile.limits?.maxMemoryMb).toBe(512);
+
+    const escalatedProfile = manager.buildDefaultProfile(process.cwd(), true);
+    expect(escalatedProfile.allowNetwork).toBe(true);
   });
 
   test("LinuxSandbox wraps commands with bwrap flags and unshares net when disabled", () => {

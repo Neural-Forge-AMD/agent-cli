@@ -27,8 +27,15 @@ export class LinuxSandbox {
   /**
    * Wraps a command array with Bubblewrap namespace flags.
    */
-  wrapCommand(cmd: string[], profile: SandboxProfile): string[] {
-    if (!this.hasBwrap || profile.kind === "danger-unrestricted") {
+  wrapCommand(cmd: string[], profile: SandboxProfile, onWarning?: (msg: string) => void): string[] {
+    if (profile.kind === "danger-unrestricted") {
+      return cmd;
+    }
+
+    if (!this.hasBwrap) {
+      onWarning?.(
+        "Linux kernel sandbox (Bubblewrap / bwrap) is not available. Command will execute without OS-level namespace isolation."
+      );
       return cmd;
     }
 
@@ -40,6 +47,26 @@ export class LinuxSandbox {
       "--proc", "/proc",
       "--tmpfs", "/tmp",
     ];
+
+    // Data Exfiltration Defense: Mask sensitive credential and identity directories with empty tmpfs
+    const homeDir = process.env.HOME || "/root";
+    const sensitivePaths = [
+      `${homeDir}/.ssh`,
+      `${homeDir}/.aws`,
+      `${homeDir}/.gnupg`,
+      `${homeDir}/.azure`,
+      `${homeDir}/.kube`,
+      `${homeDir}/.docker`,
+      `${homeDir}/.netrc`,
+      "/etc/shadow",
+      "/etc/sudoers",
+    ];
+
+    for (const sensitive of sensitivePaths) {
+      if (existsSync(sensitive)) {
+        bwrapArgs.push("--tmpfs", sensitive);
+      }
+    }
 
     // Read-write access for permitted workspace roots
     for (const writableRoot of profile.writableRoots) {

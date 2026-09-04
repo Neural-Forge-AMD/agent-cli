@@ -8,6 +8,8 @@
  * - is strictly denied
  */
 
+import { parseShellCommand } from "./shell-parser";
+
 export type ExecDecision = "allow" | "prompt" | "deny";
 export type PermissionMode = "auto" | "manual" | "accept-edits" | "plan";
 
@@ -35,18 +37,29 @@ export class ExecPolicy {
   }
 
   /**
-   * Initializes standard safe and dangerous command rules matching Codex
+   * Initializes standard safe, prompted, and denied command rules.
    */
   private initDefaultRules(): void {
-    // Read-only / inspection commands -> Allow
-    this.addRule(/^(git\s+(status|log|diff|branch|show|rev-parse))/i, "allow", "Safe git query");
-    this.addRule(/^(ls|dir|cat|type|grep|rg|find|pwd|echo|head|tail|wc|which|where)\b/i, "allow", "Safe read-only shell command");
-    this.addRule(/^(bun\s+(test|--version|-v)|npm\s+(test|--version|-v)|node\s+-v)\b/i, "allow", "Testing & runtime check");
+    // 1. Strictly Denied Commands (System Destruction & Raw Disk Writing)
+    this.addRule(/^(mkfs|format|fdisk|parted)\b/i, "deny", "Destructive filesystem formatting operation");
+    this.addRule(/^dd\s+.*(of=\/dev\/|\/dev\/sd|\/dev\/nvme)/i, "deny", "Raw block device write attempt");
+    this.addRule(/^(reboot|shutdown|poweroff|init\s+0)\b/i, "deny", "System power manipulation");
 
-    // Potentially dangerous commands -> Prompt user
-    this.addRule(/^(rm|del|rmdir|format|mkfs)\b/i, "prompt", "Destructive file removal");
-    this.addRule(/^(git\s+(push|reset\s+--hard|clean\s+-fd|rebase))\b/i, "prompt", "Destructive git operation");
-    this.addRule(/^(curl|wget|fetch|ssh|scp|ftp)\b/i, "prompt", "Network / remote transfer");
+    // 2. Potentially Dangerous / Destructive -> Prompt User
+    this.addRule(/^(sudo|su|doas|runas)\b/i, "prompt", "Privilege escalation attempt");
+    this.addRule(/^(rm|del|rmdir|shred|unlink)\b/i, "prompt", "Destructive file removal");
+    this.addRule(/^(chmod|chown|kill|pkill|killall|systemctl|service|crontab)\b/i, "prompt", "System administration & process control");
+    this.addRule(/^(git\s+(push|reset\s+--hard|clean\s+-fd|rebase|branch\s+-D|checkout\s+-f))\b/i, "prompt", "Destructive git operation");
+    this.addRule(/^(curl|wget|fetch|ssh|scp|sftp|ftp|rsync|nc|ncat|netcat|socat|telnet)\b/i, "prompt", "Network & remote transfer");
+    this.addRule(/^(bash|sh|zsh|dash|ksh|cmd(\.exe)?|powershell(\.exe)?|pwsh)\s+(-c|-command|\/c)\b/i, "prompt", "Arbitrary subshell command execution");
+    this.addRule(/^(python|python3|node|bun|perl|ruby)\s+(-c|-e)\b/i, "prompt", "Inline arbitrary code evaluation");
+    this.addRule(/^(eval|exec)\b/i, "prompt", "Dynamic code execution");
+    this.addRule(/^(npm\s+publish|bun\s+publish|cargo\s+publish)\b/i, "prompt", "Package registry publication");
+
+    // 3. Known Safe Inspection & Dev Commands -> Allow
+    this.addRule(/^(git\s+(status|log|diff|branch|show|rev-parse|tag|remote|describe))\b/i, "allow", "Safe git query");
+    this.addRule(/^(ls|dir|cat|type|grep|rg|find|pwd|echo|head|tail|wc|which|where|stat|file|du|df)\b/i, "allow", "Safe read-only shell command");
+    this.addRule(/^(bun\s+(test|run|--version|-v)|npm\s+(test|run|--version|-v)|npx\s+(tsc|eslint|oxlint)|tsc|cargo\s+(check|test|build)|go\s+(test|vet|build)|pytest|python\s+-m\s+unittest|node\s+(-v|--version|--test))\b/i, "allow", "Testing, typechecking & build verification");
   }
 
   addRule(pattern: RegExp, decision: ExecDecision, description?: string): void {
@@ -78,13 +91,57 @@ export class ExecPolicy {
 
   /**
    * Evaluates if a shell command can run or needs approval under the current permission mode.
+   * Parses command chains (;, &&, ||, |, &, \n) and subshells ($(), ``) to prevent command injection bypasses.
    */
   evaluate(command: string): { decision: ExecDecision; reason?: string } {
+    const trimmed = command.trim();
+    if (!trimmed) {
+      return { decision: "allow" };
+    }
+
+    // Decompose compound commands, pipelines, and subshells
+    const parsed = parseShellCommand(trimmed);
+    const subCommands = [...parsed.commands, ...parsed.subshellCommands].map((c) => c.trim()).filter(Boolean);
+
+    // If compound command, pipeline, or command substitution is detected
+    if (subCommands.length > 1 || parsed.subshellCommands.length > 0) {
+      for (const subCmd of subCommands) {
+        const subResult = this.evaluateSingle(subCmd);
+        if (subResult.decision === "deny") {
+          return {
+            decision: "deny",
+            reason: `Chained command contains denied operation: '${subCmd}' (${subResult.reason || "Forbidden"})`,
+          };
+        }
+        if (subResult.decision === "prompt") {
+          return {
+            decision: "prompt",
+            reason: `Chained command contains operation requiring confirmation: '${subCmd}' (${subResult.reason || "Requires approval"})`,
+          };
+        }
+      }
+
+      // If pipeline pipes into a shell interpreter (e.g. `curl ... | sh` or `cat ... | bash`)
+      if (parsed.hasPipes && /\|\s*(ba|z|k|c)?sh\b/i.test(trimmed)) {
+        return {
+          decision: "prompt",
+          reason: "Pipeline executes piped input directly into shell interpreter (| sh)",
+        };
+      }
+
+      return { decision: "allow", reason: "All chained sub-commands are permitted" };
+    }
+
+    // Single command
+    return this.evaluateSingle(trimmed);
+  }
+
+  private evaluateSingle(command: string): { decision: ExecDecision; reason?: string } {
     const trimmed = command.trim();
 
     if (this.mode === "plan") {
       // In plan mode, allow read-only inspection; require prompt gate for mutating commands
-      const isReadOnly = /^(git\s+(status|log|diff|branch|show|rev-parse)|ls|dir|cat|type|grep|rg|find|pwd|which|where)\b/i.test(trimmed);
+      const isReadOnly = /^(git\s+(status|log|diff|branch|show|rev-parse|tag|remote)|ls|dir|cat|type|grep|rg|find|pwd|which|where)\b/i.test(trimmed);
       if (isReadOnly) {
         return { decision: "allow", reason: "Read-only inspection allowed in Plan mode" };
       }
@@ -103,7 +160,7 @@ export class ExecPolicy {
 
     if (this.mode === "accept-edits") {
       // "accept-edits" auto-approves file edits, but prompts for shell commands (unless safe read-only)
-      const isReadOnly = /^(git\s+(status|log|diff|branch|show)|ls|dir|cat|type|grep|rg|find|pwd|bun\s+test|npm\s+test)\b/i.test(trimmed);
+      const isReadOnly = /^(git\s+(status|log|diff|branch|show|rev-parse)|ls|dir|cat|type|grep|rg|find|pwd|bun\s+test|npm\s+test)\b/i.test(trimmed);
       if (isReadOnly) {
         return { decision: "allow", reason: "Safe read-only command in accept-edits mode" };
       }
@@ -113,7 +170,8 @@ export class ExecPolicy {
       };
     }
 
-    // Default "auto" mode: check rule patterns
+    // Default "auto" mode:
+    // 1. Check all explicit rules
     for (const rule of this.rules) {
       if (rule.pattern.test(trimmed)) {
         return {
@@ -123,10 +181,24 @@ export class ExecPolicy {
       }
     }
 
-    // In auto mode, default to allow for standard commands
+    // 2. Check safe workspace dev commands
+    if (this.isRecognizedSafeDevCommand(trimmed)) {
+      return {
+        decision: "allow",
+        reason: "Safe development workspace command",
+      };
+    }
+
+    // 3. Fail-closed: unclassified or unknown commands require user confirmation in auto mode
+    const firstWord = trimmed.split(/\s+/)[0] || trimmed;
     return {
-      decision: "allow",
-      reason: "Auto mode allows execution",
+      decision: "prompt",
+      reason: `Command '${firstWord}' is unclassified and requires confirmation in auto mode`,
     };
+  }
+
+  private isRecognizedSafeDevCommand(command: string): boolean {
+    // Recognized safe workspace management and build tooling
+    return /^(git\s+(checkout|add|commit|stash|merge|pull|init)|bun\s+(install|add|remove)|npm\s+(install|i|add|remove)|yarn\s+(add|remove)|pnpm\s+(add|remove|install)|mkdir|touch|cp|copy|mv|move|clear|cls|echo|printf|node|bun|python|python3|cargo|go)\b/i.test(command);
   }
 }

@@ -135,12 +135,12 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
       // 4. Provision per-command ephemeral scratchpad for zero workspace pollution
       const ephemeralScratchpad = globalEphemeralWorkspace.createScratchpad(ctx.turnId);
 
-      // Build sandbox profile & wrap command (relax network if escalated)
-      const sandboxProfile = globalKernelSandbox.buildDefaultProfile(ctx.cwd);
-      if (isEscalated) {
-        sandboxProfile.allowNetwork = true;
-      }
-      const wrappedCmd = globalKernelSandbox.wrapCommand(baseCmd, sandboxProfile);
+      // Build sandbox profile & wrap command (relax network only if explicitly escalated)
+      const sandboxProfile = globalKernelSandbox.buildDefaultProfile(ctx.cwd, isEscalated);
+      let sandboxNotice: string | null = null;
+      const wrappedCmd = globalKernelSandbox.wrapCommand(baseCmd, sandboxProfile, (w) => {
+        sandboxNotice = w;
+      });
 
       try {
         const proc = Bun.spawn(wrappedCmd, {
@@ -201,9 +201,24 @@ export function createShellTool(policy: ExecPolicy = new ExecPolicy()): Tool {
 3. If this is a missing command/module, install or configure the prerequisite.`);
         }
 
-        const output = outputParts.join("\n") || "[Command completed with no output]";
+        let rawOutput = outputParts.join("\n") || "[Command completed with no output]";
+
+        // Context Protection: truncate gigantic shell outputs (e.g. log dumps, unpaginated outputs)
+        if (rawOutput.length > 30000) {
+          const lines = rawOutput.split("\n");
+          if (lines.length > 100) {
+            const head = lines.slice(0, 50).join("\n");
+            const tail = lines.slice(-40).join("\n");
+            rawOutput = `${head}\n\n... [${lines.length - 90} lines truncated for context efficiency] ...\n\n${tail}`;
+          }
+        }
+
+        if (sandboxNotice) {
+          rawOutput = `[Sandbox Notice]: ${sandboxNotice}\n${rawOutput}`;
+        }
+
         return {
-          output,
+          output: rawOutput,
           isError: result.code !== 0,
         };
       } catch (err) {
