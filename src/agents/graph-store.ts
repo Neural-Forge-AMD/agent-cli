@@ -30,7 +30,11 @@ export class AgentGraphStore {
       if (dbPath !== ":memory:") {
         const dir = resolve(dbPath, "..");
         if (!existsSync(dir)) {
-          mkdirSync(dir, { recursive: true });
+          try {
+            mkdirSync(dir, { recursive: true });
+          } catch (err) {
+            console.warn(`[AgentGraphStore] Failed to create database directory '${dir}':`, err);
+          }
         }
       }
 
@@ -149,6 +153,8 @@ export class AgentGraphStore {
   close(): void {
     try {
       this.db.close();
-    } catch {}
+    } catch (err) {
+      console.warn("[AgentGraphStore] Failed to close database cleanly:", err);
+    }
   }
 }

@@ -34,6 +34,10 @@ export function createMultiAgentTools(spawner: AgentSpawner): Tool[] {
           type: "string",
           description: "Optional model override. Defaults to inheriting parent model.",
         },
+        max_tokens: {
+          type: "number",
+          description: "Optional token budget limit for the sub-agent (default: 50000).",
+        },
       },
       required: ["task_name", "message"],
     },
@@ -42,9 +46,10 @@ export function createMultiAgentTools(spawner: AgentSpawner): Tool[] {
       const message = String(args.message || "");
       const role = args.role ? String(args.role) : undefined;
       const model = args.model ? String(args.model) : undefined;
+      const maxTokens = typeof args.max_tokens === "number" ? args.max_tokens : undefined;
 
       try {
-        const handle = await spawner.spawnAgent({ taskName, message, role, model });
+        const handle = await spawner.spawnAgent({ taskName, message, role, model, maxTokens });
         return {
           output: `Successfully spawned sub-agent '${handle.id}' with role '${handle.role}' for task '${handle.taskName}' (status: ${handle.status}). Use 'wait_agent' to collect results.`,
         };

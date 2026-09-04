@@ -61,7 +61,9 @@ export class MemoryStore {
       if (!existsSync(dir)) {
         try {
           mkdirSync(dir, { recursive: true });
-        } catch {}
+        } catch (err) {
+          console.warn(`[MemoryStore] Failed to create custom memory directory '${dir}':`, err);
+        }
       }
       return dir;
     }
@@ -71,7 +73,9 @@ export class MemoryStore {
     if (!existsSync(dir)) {
       try {
         mkdirSync(dir, { recursive: true });
-      } catch {}
+      } catch (err) {
+        console.warn(`[MemoryStore] Failed to create project memory directory '${dir}':`, err);
+      }
     }
     return dir;
   }
@@ -252,7 +256,9 @@ export class MemoryStore {
           desc: parsed.description || parsed.content.split("\n")[0] || parsed.name,
           file: f,
         });
-      } catch {}
+      } catch (err) {
+        console.warn(`[MemoryStore] Failed to parse topic memory file '${f}':`, err);
+      }
     }
 
     const indexLines = [
@@ -304,7 +310,9 @@ export class MemoryStore {
       try {
         const full = join(memoryDir, f);
         list.push(this.parseTopicFile(readFileSync(full, "utf8"), full));
-      } catch {}
+      } catch (err) {
+        console.warn(`[MemoryStore] Failed to read topic memory file '${f}':`, err);
+      }
     }
 
     return list;

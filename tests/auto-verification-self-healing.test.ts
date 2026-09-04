@@ -31,7 +31,7 @@ describe("Autonomous Closed-Loop Verification & Self-Healing", () => {
     } catch {}
   });
 
-  test("AutoVerifier resolves and executes verification commands accurately", () => {
+  test("AutoVerifier resolves and executes verification commands accurately", async () => {
     // 1. Mock Node project with typecheck script
     const pkg = {
       name: "test-app",
@@ -45,25 +45,38 @@ describe("Autonomous Closed-Loop Verification & Self-Healing", () => {
     const cmd = verifier.resolveVerificationCommand();
     expect(cmd).toBe("npm run typecheck");
 
-    // 2. Custom command execution
+    // 2. Custom command execution (async)
     const customVerifier = new AutoVerifier({
       cwd: testDir,
       customCommand: "node -e \"console.log('custom ok')\"",
     });
-    const result = customVerifier.verify(["src/index.ts"]);
+    const result = await customVerifier.verify(["src/index.ts"]);
     expect(result.success).toBe(true);
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("custom ok");
 
-    // 3. Failing verification command
+    // 3. Failing verification command (async)
     const failVerifier = new AutoVerifier({
       cwd: testDir,
       customCommand: "node -e \"console.error('syntax error at line 5'); process.exit(1)\"",
     });
-    const failResult = failVerifier.verify(["src/index.ts"]);
+    const failResult = await failVerifier.verify(["src/index.ts"]);
     expect(failResult.success).toBe(false);
     expect(failResult.exitCode).toBe(1);
     expect(failResult.output).toContain("syntax error at line 5");
+
+    // 4. Targeted test discovery from modifiedFiles
+    mkdirSync(join(testDir, "tests"), { recursive: true });
+    writeFileSync(join(testDir, "tests", "auth.test.ts"), "// auth test", "utf8");
+    const targeted = verifier.findTargetedTests(["src/auth.ts"]);
+    expect(targeted).toContain("tests/auth.test.ts");
+
+    // 5. AbortSignal cancellation
+    const controller = new AbortController();
+    controller.abort();
+    const abortedResult = await customVerifier.verify(["src/index.ts"], controller.signal);
+    expect(abortedResult.success).toBe(false);
+    expect(abortedResult.reason).toBe("ABORTED");
   });
 
   test("Turn without file mutations does not trigger verification", async () => {

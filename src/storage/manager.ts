@@ -95,7 +95,8 @@ export class SessionPersistenceManager {
   loadSession(threadId: string) {
     try {
       return this.store.restoreSession(threadId);
-    } catch {
+    } catch (err) {
+      console.warn(`[SessionPersistenceManager] Failed to restore session '${threadId}':`, err);
       return null;
     }
   }
@@ -107,7 +108,9 @@ export class SessionPersistenceManager {
     for (const unsub of this.unsubscribers) {
       try {
         unsub();
-      } catch {}
+      } catch (err) {
+        console.warn("[SessionPersistenceManager] Error in unbindSession callback:", err);
+      }
     }
     this.unsubscribers = [];
   }
@@ -142,7 +145,9 @@ export class SessionPersistenceManager {
     for (const unsub of this.unsubscribers) {
       try {
         unsub();
-      } catch {}
+      } catch (err) {
+        console.warn("[SessionPersistenceManager] Error closing session persistence listener:", err);
+      }
     }
     this.unsubscribers = [];
     this.store.close();

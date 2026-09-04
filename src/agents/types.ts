@@ -16,6 +16,15 @@ export interface SpawnAgentParams {
   model?: string;
   systemPrompt?: string;
   tools?: ToolRouter;
+  maxTokens?: number;
+  maxIterations?: number;
+}
+
+export interface AgentSpawnerOptions {
+  maxConcurrentAgents?: number;
+  maxDepth?: number;
+  maxRetainedCompleted?: number;
+  defaultTokenBudget?: number;
 }
 
 export interface SubAgentHandle {
@@ -30,6 +39,9 @@ export interface SubAgentHandle {
   promise: Promise<string>;
   lastOutput?: string;
   error?: string;
+  depth?: number;
+  tokenBudget?: number;
+  totalTokens?: number;
 }
 
 export interface SubAgentSummary {
@@ -41,4 +53,7 @@ export interface SubAgentSummary {
   createdAt: number;
   agentRuntimeId: string;
   lastOutput?: string;
+  depth?: number;
+  tokenBudget?: number;
+  totalTokens?: number;
 }

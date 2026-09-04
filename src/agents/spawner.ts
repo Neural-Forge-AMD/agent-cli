@@ -7,11 +7,17 @@
  */
 
 import { Session } from "../session/session";
-import type { SpawnAgentParams, SubAgentHandle, SubAgentSummary } from "./types";
+import type {
+  SpawnAgentParams,
+  SubAgentHandle,
+  SubAgentSummary,
+  AgentSpawnerOptions,
+} from "./types";
 import { AgentRoleRegistry } from "./roles";
 import { createAgentIdentity, type AgentIdentity } from "./identity";
 import { AgentGraphStore } from "./graph-store";
 import { GroupyError } from "../protocol/errors";
+import { ToolRouter } from "../tools/router";
 
 export class AgentSpawner {
   private subAgents = new Map<string, SubAgentHandle>();
@@ -19,22 +25,51 @@ export class AgentSpawner {
   public readonly roleRegistry: AgentRoleRegistry;
   public readonly parentIdentity: AgentIdentity;
   public readonly graphStore: AgentGraphStore;
+  public readonly maxConcurrentAgents: number;
+  public readonly maxDepth: number;
+  public readonly maxRetainedCompleted: number;
+  public readonly defaultTokenBudget: number;
 
   constructor(
     private parentSession: Session,
     roleRegistry?: AgentRoleRegistry,
     parentIdentity?: AgentIdentity,
-    graphStore?: AgentGraphStore
+    graphStore?: AgentGraphStore,
+    options?: AgentSpawnerOptions,
+    public readonly depth: number = 0
   ) {
     this.roleRegistry = roleRegistry || new AgentRoleRegistry();
     this.parentIdentity = parentIdentity || createAgentIdentity(undefined, "groupy-main");
     this.graphStore = graphStore || new AgentGraphStore();
+
+    const envMax = process.env.PIKAA_MAX_SUBAGENTS ? parseInt(process.env.PIKAA_MAX_SUBAGENTS, 10) : NaN;
+    this.maxConcurrentAgents = options?.maxConcurrentAgents ?? (!isNaN(envMax) && envMax > 0 ? envMax : 5);
+    this.maxDepth = options?.maxDepth ?? 2;
+    this.maxRetainedCompleted = options?.maxRetainedCompleted ?? 20;
+    this.defaultTokenBudget = options?.defaultTokenBudget ?? 50000;
   }
 
   /**
    * Spawns an independent child agent with a cryptographic identity and specialized role.
    */
   async spawnAgent(params: SpawnAgentParams): Promise<SubAgentSummary> {
+    // 1. Guard against recursion depth runaway
+    if (this.depth >= this.maxDepth) {
+      throw new GroupyError(
+        `Recursion limit exceeded: Maximum sub-agent nesting depth (${this.maxDepth}) reached.`
+      );
+    }
+
+    // 2. Guard against unbounded concurrent sub-agent resource usage
+    const activeRunningCount = Array.from(this.subAgents.values()).filter(
+      (h) => h.status === "running"
+    ).length;
+    if (activeRunningCount >= this.maxConcurrentAgents) {
+      throw new GroupyError(
+        `Resource limit exceeded: Maximum concurrent sub-agents limit (${this.maxConcurrentAgents}) reached. Please wait for running sub-agents to complete or close them.`
+      );
+    }
+
     const roleName = params.role || "default";
     const roleConfig = this.roleRegistry.getRole(roleName);
     const agentIndex = this.nextAgentId++;
@@ -53,7 +88,21 @@ export class AgentSpawner {
         : `You are a specialized sub-agent named ${nickname} tasked with: '${params.taskName}'. Focus strictly on this task.`);
 
     const baseTools = params.tools || this.parentSession.tools;
-    const effectiveTools = this.roleRegistry.filterRouterForRole(baseTools, roleName);
+    let effectiveTools = this.roleRegistry.filterRouterForRole(baseTools, roleName);
+
+    // If child is reaching maximum recursion depth, strip recursive spawning tools to protect against recursion loops
+    if (this.depth + 1 >= this.maxDepth) {
+      const sanitizedRouter = new ToolRouter();
+      for (const t of effectiveTools.list()) {
+        if (t.name !== "spawn_agent") {
+          sanitizedRouter.register(t);
+        }
+      }
+      effectiveTools = sanitizedRouter;
+    }
+
+    const tokenBudget = params.maxTokens ?? this.defaultTokenBudget;
+    let accumulatedTokens = 0;
 
     const childSession = new Session({
       threadId: agentId,
@@ -82,38 +131,76 @@ export class AgentSpawner {
       identity: childIdentity,
       session: childSession,
       promise: taskPromise,
+      depth: this.depth + 1,
+      tokenBudget,
+      totalTokens: 0,
     };
 
-    // Record directional parent/child topology edge in AgentGraphStore
+    // Record directional parent/child topology edge in AgentGraphStore with error logging
     try {
       this.graphStore.upsertEdge(this.parentSession.threadId, agentId, "open");
-    } catch {}
+    } catch (err) {
+      console.warn(`[AgentSpawner] Failed to record edge in graph store for agent '${agentId}':`, err);
+    }
 
     // Listen to child session events
     let collectedAgentText = "";
     childSession.onEvent((event) => {
       if (event.msg.type === "AgentMessageDelta") {
         collectedAgentText += event.msg.delta;
+        // Conservative token estimate based on character length (~4 chars per token)
+        accumulatedTokens += Math.ceil(event.msg.delta.length / 4);
+        handle.totalTokens = accumulatedTokens;
+
+        if (accumulatedTokens > tokenBudget && handle.status === "running") {
+          handle.status = "error";
+          handle.error = `Token budget limit exceeded (${tokenBudget} tokens).`;
+          childSession.interrupt();
+          try {
+            this.graphStore.setEdgeStatus(agentId, "closed");
+          } catch (err) {
+            console.warn(`[AgentSpawner] Failed to update edge status for agent '${agentId}':`, err);
+          }
+          rejectPromise(new Error(handle.error));
+        }
       } else if (event.msg.type === "TurnCompleted") {
-        handle.status = "completed";
-        handle.lastOutput = collectedAgentText.trim();
-        try {
-          this.graphStore.setEdgeStatus(agentId, "closed");
-        } catch {}
-        resolvePromise(handle.lastOutput);
+        if (handle.status === "running") {
+          handle.status = "completed";
+          handle.lastOutput = collectedAgentText.trim();
+          handle.totalTokens = accumulatedTokens;
+          try {
+            this.graphStore.setEdgeStatus(agentId, "closed");
+          } catch (err) {
+            console.warn(`[AgentSpawner] Failed to update edge status for agent '${agentId}':`, err);
+          }
+          this.pruneCompletedAgents();
+          resolvePromise(handle.lastOutput);
+        }
       } else if (event.msg.type === "Error") {
-        handle.status = "error";
-        handle.error = event.msg.message;
-        try {
-          this.graphStore.setEdgeStatus(agentId, "closed");
-        } catch {}
-        rejectPromise(new Error(event.msg.message));
+        if (handle.status === "running") {
+          handle.status = "error";
+          handle.error = event.msg.message;
+          handle.totalTokens = accumulatedTokens;
+          try {
+            this.graphStore.setEdgeStatus(agentId, "closed");
+          } catch (err) {
+            console.warn(`[AgentSpawner] Failed to update edge status for agent '${agentId}':`, err);
+          }
+          this.pruneCompletedAgents();
+          rejectPromise(new Error(event.msg.message));
+        }
       } else if (event.msg.type === "StatusChanged" && event.msg.status === "interrupted") {
-        handle.status = "interrupted";
-        try {
-          this.graphStore.setEdgeStatus(agentId, "closed");
-        } catch {}
-        resolvePromise(collectedAgentText.trim() || "[Task was interrupted]");
+        if (handle.status === "running") {
+          handle.status = "interrupted";
+          handle.totalTokens = accumulatedTokens;
+          try {
+            this.graphStore.setEdgeStatus(agentId, "closed");
+          } catch (err) {
+            console.warn(`[AgentSpawner] Failed to update edge status for agent '${agentId}':`, err);
+          }
+          this.pruneCompletedAgents();
+          resolvePromise(collectedAgentText.trim() || "[Task was interrupted]");
+        }
       }
     });
 
@@ -121,12 +208,18 @@ export class AgentSpawner {
 
     // Launch task execution
     childSession.prompt(params.message).catch((err) => {
-      handle.status = "error";
-      handle.error = err instanceof Error ? err.message : String(err);
-      try {
-        this.graphStore.setEdgeStatus(agentId, "closed");
-      } catch {}
-      rejectPromise(err);
+      if (handle.status === "running") {
+        handle.status = "error";
+        handle.error = err instanceof Error ? err.message : String(err);
+        handle.totalTokens = accumulatedTokens;
+        try {
+          this.graphStore.setEdgeStatus(agentId, "closed");
+        } catch (storeErr) {
+          console.warn(`[AgentSpawner] Failed to update edge status for agent '${agentId}':`, storeErr);
+        }
+        this.pruneCompletedAgents();
+        rejectPromise(err);
+      }
     });
 
     return {
@@ -137,7 +230,29 @@ export class AgentSpawner {
       status: handle.status,
       createdAt: handle.createdAt,
       agentRuntimeId: childIdentity.agentRuntimeId,
+      depth: handle.depth,
+      tokenBudget: handle.tokenBudget,
+      totalTokens: handle.totalTokens,
     };
+  }
+
+  /**
+   * Prunes oldest completed, interrupted, or errored agents when exceeding maxRetainedCompleted limit.
+   * Prevents long-running sessions from leaking memory.
+   */
+  private pruneCompletedAgents(): void {
+    const finishedHandles = Array.from(this.subAgents.values()).filter(
+      (h) => h.status !== "running"
+    );
+
+    if (finishedHandles.length > this.maxRetainedCompleted) {
+      // Sort oldest first
+      finishedHandles.sort((a, b) => a.createdAt - b.createdAt);
+      const toRemove = finishedHandles.slice(0, finishedHandles.length - this.maxRetainedCompleted);
+      for (const h of toRemove) {
+        this.subAgents.delete(h.id);
+      }
+    }
   }
 
   /**
@@ -206,7 +321,7 @@ export class AgentSpawner {
   }
 
   /**
-   * Interrupts and terminates a sub-agent
+   * Interrupts and terminates a sub-agent, releasing resources.
    */
   async closeAgent(agentId: string): Promise<string> {
     const handle = this.subAgents.get(agentId);
@@ -218,8 +333,42 @@ export class AgentSpawner {
     handle.status = "interrupted";
     try {
       this.graphStore.setEdgeStatus(agentId, "closed");
-    } catch {}
+    } catch (err) {
+      console.warn(`[AgentSpawner] Failed to close edge for agent '${agentId}':`, err);
+    }
+    this.pruneCompletedAgents();
     return `Sub-agent ${handle.nickname} (${agentId}) interrupted and closed.`;
+  }
+
+  /**
+   * Removes an agent completely from the spawner registry.
+   */
+  removeAgent(agentId: string): boolean {
+    const handle = this.subAgents.get(agentId);
+    if (!handle) return false;
+    if (handle.status === "running") {
+      handle.session.interrupt();
+    }
+    try {
+      this.graphStore.setEdgeStatus(agentId, "closed");
+    } catch (err) {
+      console.warn(`[AgentSpawner] Failed to close edge on removal for '${agentId}':`, err);
+    }
+    return this.subAgents.delete(agentId);
+  }
+
+  /**
+   * Clears all completed, interrupted, or errored agents from memory.
+   */
+  clearCompleted(): number {
+    let cleared = 0;
+    for (const [id, handle] of this.subAgents.entries()) {
+      if (handle.status !== "running") {
+        this.subAgents.delete(id);
+        cleared++;
+      }
+    }
+    return cleared;
   }
 
   /**
@@ -237,6 +386,9 @@ export class AgentSpawner {
         createdAt: handle.createdAt,
         agentRuntimeId: handle.identity.agentRuntimeId,
         lastOutput: handle.lastOutput,
+        depth: handle.depth,
+        tokenBudget: handle.tokenBudget,
+        totalTokens: handle.totalTokens,
       });
     }
     return list;

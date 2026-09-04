@@ -309,7 +309,7 @@ export async function runTurn(
           cwd,
           customCommand: session.autoVerificationCommand,
         });
-        const command = verifier.resolveVerificationCommand();
+        const command = verifier.resolveVerificationCommand(Array.from(modifiedFiles));
 
         if (command) {
           session.emitEvent({
@@ -319,7 +319,7 @@ export async function runTurn(
             modifiedFiles: Array.from(modifiedFiles),
           });
 
-          const vResult = verifier.verify(Array.from(modifiedFiles));
+          const vResult = await verifier.verify(Array.from(modifiedFiles), signal);
 
           session.emitEvent({
             type: "VerificationCompleted",
