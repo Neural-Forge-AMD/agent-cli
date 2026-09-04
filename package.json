@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "@pikaa-ai/pikaa",
   "version": "0.4.1",
   "description": "PIKAA CLI - AI coding agent that runs locally in your terminal.",
@@ -62,3 +62,4 @@
     "typescript": "^5.7.0"
   }
 }
+
