@@ -1,6 +1,6 @@
 {
   "name": "@pikaa-ai/pikaa",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "PIKAA CLI - AI coding agent that runs locally in your terminal.",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -32,14 +32,14 @@
     "prepublishOnly": "bun run build:js"
   },
   "optionalDependencies": {
-    "@pikaa-ai/pikaa-linux-x64": "0.4.1",
-    "@pikaa-ai/pikaa-linux-x64-musl": "0.4.1",
-    "@pikaa-ai/pikaa-linux-arm64": "0.4.1",
-    "@pikaa-ai/pikaa-linux-arm64-musl": "0.4.1",
-    "@pikaa-ai/pikaa-darwin-x64": "0.4.1",
-    "@pikaa-ai/pikaa-darwin-arm64": "0.4.1",
-    "@pikaa-ai/pikaa-windows-x64": "0.4.1",
-    "@pikaa-ai/pikaa-windows-arm64": "0.4.1"
+    "@pikaa-ai/pikaa-linux-x64": "0.4.2",
+    "@pikaa-ai/pikaa-linux-x64-musl": "0.4.2",
+    "@pikaa-ai/pikaa-linux-arm64": "0.4.2",
+    "@pikaa-ai/pikaa-linux-arm64-musl": "0.4.2",
+    "@pikaa-ai/pikaa-darwin-x64": "0.4.2",
+    "@pikaa-ai/pikaa-darwin-arm64": "0.4.2",
+    "@pikaa-ai/pikaa-windows-x64": "0.4.2",
+    "@pikaa-ai/pikaa-windows-arm64": "0.4.2"
   },
   "keywords": [
     "ai",
@@ -62,4 +62,3 @@
     "typescript": "^5.7.0"
   }
 }
-
