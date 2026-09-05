@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Shell Command Tokenizer and Pipeline Decomposer.
  * Parses shell strings to decompose command chaining (;, &&, ||, |, &, \n)
  * and extracts command substitutions ($(), ``) while respecting quotes.
@@ -88,13 +88,33 @@ export function parseShellCommand(commandLine: string): ParsedShellCommand {
     if (char === "$" && i + 1 < len && commandLine[i + 1] === "(") {
       let depth = 1;
       let endIdx = -1;
+      let subInSingleQuote = false;
+      let subInDoubleQuote = false;
+      let subIsEscaped = false;
+
       for (let j = i + 2; j < len; j++) {
-        if (commandLine[j] === "\\" && j + 1 < len) {
-          j++;
+        const subChar = commandLine[j]!;
+        if (subIsEscaped) {
+          subIsEscaped = false;
           continue;
         }
-        if (commandLine[j] === "(") depth++;
-        else if (commandLine[j] === ")") {
+        if (subChar === "\\") {
+          subIsEscaped = true;
+          continue;
+        }
+        if (subChar === "'" && !subInDoubleQuote) {
+          subInSingleQuote = !subInSingleQuote;
+          continue;
+        }
+        if (subChar === '"' && !subInSingleQuote) {
+          subInDoubleQuote = !subInDoubleQuote;
+          continue;
+        }
+        if (subInSingleQuote || subInDoubleQuote) {
+          continue;
+        }
+        if (subChar === "(") depth++;
+        else if (subChar === ")") {
           depth--;
           if (depth === 0) {
             endIdx = j;

@@ -31,7 +31,7 @@ const arch = process.arch;
 let version = "";
 let scope = "@pikaa-ai";
 try {
-  const pkg = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
+  const pkg = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8").replace(/^\uFEFF/, ""));
   version = pkg.version || "";
   if (pkg.name && pkg.name.startsWith("@")) {
     scope = pkg.name.split("/")[0];

@@ -42,6 +42,8 @@ export interface SubAgentHandle {
   depth?: number;
   tokenBudget?: number;
   totalTokens?: number;
+  resolvePromise?: (output: string) => void;
+  rejectPromise?: (err: Error) => void;
 }
 
 export interface SubAgentSummary {

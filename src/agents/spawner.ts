@@ -134,6 +134,8 @@ export class AgentSpawner {
       depth: this.depth + 1,
       tokenBudget,
       totalTokens: 0,
+      resolvePromise: (output: string) => resolvePromise(output),
+      rejectPromise: (err: Error) => rejectPromise(err),
     };
 
     // Record directional parent/child topology edge in AgentGraphStore with error logging
@@ -193,13 +195,14 @@ export class AgentSpawner {
         if (handle.status === "running") {
           handle.status = "interrupted";
           handle.totalTokens = accumulatedTokens;
+          handle.lastOutput = collectedAgentText.trim() || "[Task was interrupted]";
           try {
             this.graphStore.setEdgeStatus(agentId, "closed");
           } catch (err) {
             console.warn(`[AgentSpawner] Failed to update edge status for agent '${agentId}':`, err);
           }
           this.pruneCompletedAgents();
-          resolvePromise(collectedAgentText.trim() || "[Task was interrupted]");
+          resolvePromise(handle.lastOutput);
         }
       }
     });
@@ -282,7 +285,7 @@ export class AgentSpawner {
   }
 
   private async waitSingleAgent(handle: SubAgentHandle, timeoutMs: number): Promise<string> {
-    if (handle.status === "completed" && handle.lastOutput !== undefined) {
+    if ((handle.status === "completed" || handle.status === "interrupted") && handle.lastOutput !== undefined) {
       return handle.lastOutput;
     }
     if (handle.status === "error") {
@@ -330,7 +333,11 @@ export class AgentSpawner {
     }
 
     handle.session.interrupt();
-    handle.status = "interrupted";
+    if (handle.status === "running") {
+      handle.status = "interrupted";
+      handle.lastOutput = handle.lastOutput || "[Task was interrupted]";
+      handle.resolvePromise?.(handle.lastOutput);
+    }
     try {
       this.graphStore.setEdgeStatus(agentId, "closed");
     } catch (err) {
@@ -348,6 +355,9 @@ export class AgentSpawner {
     if (!handle) return false;
     if (handle.status === "running") {
       handle.session.interrupt();
+      handle.status = "interrupted";
+      handle.lastOutput = handle.lastOutput || "[Task was interrupted]";
+      handle.resolvePromise?.(handle.lastOutput);
     }
     try {
       this.graphStore.setEdgeStatus(agentId, "closed");

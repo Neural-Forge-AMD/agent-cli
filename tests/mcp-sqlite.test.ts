@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { SqliteEngine } from "../src/mcp/servers/sqlite/db-engine";
 import { getSqliteToolSchemas } from "../src/mcp/servers/sqlite/tools";
 import { SqliteMcpServer } from "../src/mcp/servers/sqlite/server";
@@ -11,12 +12,16 @@ import { ToolRouter } from "../src/tools/router";
 function safeUnlink(path: string) {
   try {
     if (existsSync(path)) unlinkSync(path);
+    const wal = `${path}-wal`;
+    const shm = `${path}-shm`;
+    if (existsSync(wal)) unlinkSync(wal);
+    if (existsSync(shm)) unlinkSync(shm);
   } catch {}
 }
 
 describe("Local SQLite & Database Inspector MCP Subsystem", () => {
   it("should perform full schema creation, writes, and reads with safe query guards", () => {
-    const testDbPath = resolve(process.cwd(), `test_db_1_${Date.now()}.sqlite`);
+    const testDbPath = resolve(tmpdir(), `test_db_1_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.sqlite`);
     const engine = new SqliteEngine(testDbPath);
 
     try {
@@ -102,7 +107,7 @@ describe("Local SQLite & Database Inspector MCP Subsystem", () => {
   });
 
   it("should respond to MCP JSON-RPC 2.0 protocol in SqliteMcpServer", async () => {
-    const testDbPath = resolve(process.cwd(), `test_db_2_${Date.now()}.sqlite`);
+    const testDbPath = resolve(tmpdir(), `test_db_2_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.sqlite`);
     const server = new SqliteMcpServer(testDbPath);
 
     try {
@@ -151,7 +156,7 @@ describe("Local SQLite & Database Inspector MCP Subsystem", () => {
   });
 
   it("should connect SQLite MCP server via McpManager stdio transport seamlessly", async () => {
-    const testDbPath = resolve(process.cwd(), `test_db_3_${Date.now()}.sqlite`);
+    const testDbPath = resolve(tmpdir(), `test_db_3_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.sqlite`);
     const manager = new McpManager();
     const router = new ToolRouter();
 

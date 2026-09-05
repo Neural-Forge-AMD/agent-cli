@@ -29,7 +29,7 @@ async function main() {
     process.exit(1);
   }
 
-  const pkg = JSON.parse(readFileSync(PKG_PATH, "utf8"));
+  const pkg = JSON.parse(readFileSync(PKG_PATH, "utf8").replace(/^\uFEFF/, ""));
   const version = pkg.version;
   const scope = pkg.name.startsWith("@") ? pkg.name.split("/")[0] : "@pikaa-ai";
 

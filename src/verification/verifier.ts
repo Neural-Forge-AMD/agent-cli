@@ -106,7 +106,7 @@ export class AutoVerifier {
     const pkgPath = join(this.cwd, "package.json");
     if (existsSync(pkgPath)) {
       try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf8").replace(/^\uFEFF/, ""));
         const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
 
         if (allDeps.vitest) {
@@ -171,7 +171,7 @@ export class AutoVerifier {
     const pkgPath = join(this.cwd, "package.json");
     if (existsSync(pkgPath)) {
       try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf8").replace(/^\uFEFF/, ""));
         if (pkg.scripts) {
           const pm = existsSync(join(this.cwd, "bun.lockb")) || existsSync(join(this.cwd, "bun.lock"))
             ? "bun"
@@ -240,7 +240,7 @@ export class AutoVerifier {
     const pkgPath = join(this.cwd, "package.json");
     if (existsSync(pkgPath)) {
       try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf8").replace(/^\uFEFF/, ""));
         if (pkg.scripts?.test) {
           const pm = existsSync(join(this.cwd, "bun.lockb")) || existsSync(join(this.cwd, "bun.lock")) ? "bun" : "npm";
           return pm === "bun" ? "bun test" : "npm test";

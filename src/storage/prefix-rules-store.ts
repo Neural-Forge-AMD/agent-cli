@@ -149,7 +149,14 @@ export class PrefixRulesStore {
     // Disallow prefix matching if command tokens contain unparsed shell chaining operators
     const SHELL_OPERATORS = new Set([";", "&&", "||", "|", "&", ";;", "&|"]);
     for (const token of cmdTokens) {
-      if (SHELL_OPERATORS.has(token) || token.includes(";") || token.includes("&&") || token.includes("||")) {
+      if (
+        SHELL_OPERATORS.has(token) ||
+        token.includes(";") ||
+        token.includes("&&") ||
+        token.includes("||") ||
+        token.includes("|") ||
+        token.includes("&")
+      ) {
         return false;
       }
     }

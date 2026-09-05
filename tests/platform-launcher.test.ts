@@ -24,7 +24,7 @@ describe("Platform Launcher & Cross-Platform Distribution", () => {
   });
 
   it("should match all 8 platform packages in root package.json optionalDependencies", () => {
-    const pkg = JSON.parse(readFileSync(join(ROOT_DIR, "package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync(join(ROOT_DIR, "package.json"), "utf8").replace(/^\uFEFF/, ""));
     const optDeps = pkg.optionalDependencies || {};
 
     for (const target of TARGETS) {

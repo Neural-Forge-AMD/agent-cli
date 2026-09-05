@@ -13,7 +13,7 @@ const DIST_BIN_DIR = join(ROOT_DIR, "dist", "bin");
 const RELEASE_DIR = join(ROOT_DIR, "dist", "release");
 const PACKAGES_DIR = join(ROOT_DIR, "dist", "packages");
 
-const pkgJson = JSON.parse(readFileSync(join(ROOT_DIR, "package.json"), "utf8"));
+const pkgJson = JSON.parse(readFileSync(join(ROOT_DIR, "package.json"), "utf8").replace(/^\uFEFF/, ""));
 const VERSION = pkgJson.version || "0.4.0";
 const SCOPE = pkgJson.name.startsWith("@") ? pkgJson.name.split("/")[0] : "@pikaa-ai";
 

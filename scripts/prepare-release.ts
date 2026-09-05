@@ -33,7 +33,7 @@ async function main() {
   console.log(" 📦 CI/CD Auto-Version & Release Resolver");
   console.log("==================================================\n");
 
-  const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf8").replace(/^\uFEFF/, ""));
   let currentVersion: string = pkg.version || "0.3.0";
 
   const githubRef = process.env.GITHUB_REF || "";

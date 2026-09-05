@@ -57,7 +57,7 @@ export class ProjectAnalyzer {
     const pkgPath = join(this.cwd, "package.json");
     if (existsSync(pkgPath)) {
       try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf8").replace(/^\uFEFF/, ""));
         if (!description && pkg.description) description = pkg.description;
 
         const pm = packageManager || "npm";
@@ -110,7 +110,7 @@ export class ProjectAnalyzer {
     const tsconfigPath = join(this.cwd, "tsconfig.json");
     if (existsSync(tsconfigPath)) {
       try {
-        const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf8"));
+        const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf8").replace(/^\uFEFF/, ""));
         if (tsconfig.compilerOptions?.strict) {
           codeConventions.push("TypeScript strict mode enabled.");
         }
@@ -317,7 +317,7 @@ export class ProjectAnalyzer {
     const pkgPath = join(this.cwd, "package.json");
     if (existsSync(pkgPath)) {
       try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf8").replace(/^\uFEFF/, ""));
         if (pkg.name && pkg.name !== "frontend" && pkg.name !== "backend" && pkg.name !== "app") {
           return pkg.name.startsWith("@") ? pkg.name.split("/")[1] || pkg.name : pkg.name;
         }

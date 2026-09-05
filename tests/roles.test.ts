@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import { AgentRoleRegistry } from "../src/agents/roles";
 import { ToolRouter } from "../src/tools/router";
 import type { Tool, ToolContext, ToolExecutionResult } from "../src/tools/types";

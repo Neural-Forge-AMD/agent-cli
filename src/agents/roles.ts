@@ -151,7 +151,7 @@ export class AgentRoleRegistry {
     for (const entry of entries) {
       if (entry.endsWith(".json")) {
         try {
-          const content = readFileSync(join(fullPath, entry), "utf8");
+          const content = readFileSync(join(fullPath, entry), "utf8").replace(/^\uFEFF/, "");
           const parsed: AgentRole = JSON.parse(content);
           if (parsed.name && parsed.systemPrompt) {
             this.registerRole(parsed);
